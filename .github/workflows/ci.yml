@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   push:
@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ------------------------------------------------------------------
+  # Phase 90 — Deterministic proof chain
+  # ------------------------------------------------------------------
   deterministic-proof:
+    name: Phase 90 – Deterministic proof
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -23,14 +27,14 @@ jobs:
         run: |
           chmod +x test/*.sh runtime/bin/* build/*.sh populate/*.sh || true
 
-      - name: Run deterministic proof chain (Phase 90)
+      - name: Run deterministic proof chain
         env:
           FACTORY_VERSION: "ci"
           RUNTIME_VERSION: "ci"
         run: |
           ./test/90_test_all_deterministic.sh
 
-      - name: Upload release artifacts (latest) for inspection
+      - name: Upload release artifacts (latest)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -39,88 +43,116 @@ jobs:
           if-no-files-found: warn
 
 
-
-
-
+  # ------------------------------------------------------------------
+  # Phase 105B — Sign minted releases (CI)
+  # ------------------------------------------------------------------
   sign-releases:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    name: Phase 105B - Sign minted releases (CI)
+    name: Phase 105B – Sign minted releases (CI)
     runs-on: ubuntu-latest
     needs: [deterministic-proof]
+
+    # Secrets MUST only exist on trusted pushes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Option A: environment-scoped secrets
+    environment: ci
+
+    # Inject secret at JOB scope (visible to all steps)
+    env:
+      RELEASE_SIGNING_KEY_PEM: ${{ secrets.RELEASE_SIGNING_KEY_PEM }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download minted release artifacts
         uses: actions/download-artifact@v4
         with:
           name: runtime-releases
           path: runtime/state/releases
-      - name: Ensure tools executable
+
+      - name: Ensure signing tools executable
         run: |
           chmod +x runtime/bin/ci_sign_releases || true
           chmod +x runtime/bin/attach_release_signatures || true
           chmod +x runtime/bin/verify_release_signatures || true
           chmod +x runtime/bin/validate_manifest || true
           chmod +x runtime/bin/sign_detached runtime/bin/verify_detached || true
+
       - name: Preflight signing key
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "${RELEASE_SIGNING_KEY_PEM:-}" ]]; then
-            echo "ERROR: RELEASE_SIGNING_KEY_PEM is empty (secret missing or not injected)." >&2
+            echo "ERROR: RELEASE_SIGNING_KEY_PEM is empty." >&2
             exit 2
           fi
           if ! printf "%s" "$RELEASE_SIGNING_KEY_PEM" | grep -q "BEGIN"; then
-            echo "ERROR: RELEASE_SIGNING_KEY_PEM does not look like a PEM (missing BEGIN header)." >&2
-            echo "First 60 chars:" >&2
-            printf "%s" "$RELEASE_SIGNING_KEY_PEM" | head -c 60 >&2; echo >&2
+            echo "ERROR: RELEASE_SIGNING_KEY_PEM is not a PEM." >&2
             exit 3
           fi
+
       - name: Sign releases (no minting)
-        env:
-          RELEASE_SIGNING_KEY_PEM: ${{ secrets.RELEASE_SIGNING_KEY_PEM }}
         run: |
           ./runtime/bin/ci_sign_releases runtime/state/releases
+
       - name: Signature report (post-sign)
         run: |
           chmod +x runtime/bin/signature_report || true
           ./runtime/bin/signature_report > signature_report_after_sign.txt
           cat signature_report_after_sign.txt
+
       - name: Upload signed releases
         uses: actions/upload-artifact@v4
         with:
           name: runtime-releases-signed
           path: runtime/state/releases
+
       - name: Upload signature report (after sign)
         uses: actions/upload-artifact@v4
         with:
           name: signature-report-after-sign
           path: signature_report_after_sign.txt
-  hygiene_report:
-    name: Phase 103 - Hygiene report (dry-run)
+
+
+  # ------------------------------------------------------------------
+  # Phase 103 — Hygiene report (dry-run)
+  # ------------------------------------------------------------------
+  hygiene-report:
+    name: Phase 103 – Hygiene report (dry-run)
     runs-on: ubuntu-latest
     needs: [deterministic-proof]
+
     steps:
       - uses: actions/checkout@v4
-      - name: Make scripts executable
+
+      - name: Ensure scripts executable
         run: |
           chmod +x patch102_hygiene.sh || true
           chmod +x runtime/bin/validate_manifest || true
+
       - name: Run hygiene (dry-run only)
         run: |
           ./patch102_hygiene.sh --dry-run
           test -f runtime/state/reports/phase102_hygiene_latest.txt
+
       - name: Upload hygiene report
         uses: actions/upload-artifact@v4
         with:
           name: hygiene-report
           path: runtime/state/reports/phase102_hygiene_latest.txt
+
+
+  # ------------------------------------------------------------------
+  # Phase 96 — Manifest portability report (3-tier policy)
+  # ------------------------------------------------------------------
   manifest-portability-report:
+    name: Phase 96 – Manifest portability report
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -131,120 +163,9 @@ jobs:
         run: |
           chmod +x runtime/bin/validate_manifest || true
 
-      - name: Report portability of all manifests in runtime/state/releases (3-tier policy)
+      - name: Generate portability report
         run: |
-          python3 - <<'PY' > portability_report.txt
-          import glob, json, platform, re, subprocess, sys
-
-          # Phase 96 (Option C) policy:
-          # - PORTABLE_STRICT: compat matches host on {os, arch, python, impl, machine}
-          # - PORTABLE_RELAXED: matches host on {os, arch, python, impl}, machine differs
-          # - HOST_BOUND: mismatch on any of {os, arch, python, impl}
-          STRICT_KEYS = ("os","arch","python","impl","machine")
-          RELAX_KEYS  = ("os","arch","python","impl")
-
-          def host():
-              return {
-                  "os": platform.system().lower(),
-                  "arch": platform.machine().lower(),
-                  "python": platform.python_version(),
-                  "impl": platform.python_implementation().lower(),
-                  "machine": platform.platform(),
-              }
-
-          host_full = host()
-          host_relax = {k: host_full[k] for k in RELAX_KEYS}
-
-          manifests = sorted(glob.glob("runtime/state/releases/release_*.json"))
-          if not manifests:
-              print("No manifests found in runtime/state/releases (nothing to report).")
-              sys.exit(0)
-
-          portable_strict = []
-          portable_relaxed = []
-          host_bound = []
-          invalid = []
-
-          def rid_from_path(p):
-              m = re.search(r"release_(\d{8}T\d{6}Z)\.json$", p)
-              return m.group(1) if m else ""
-
-          for mpath in manifests:
-              rid = rid_from_path(mpath)
-              cmd = ["./runtime/bin/validate_manifest", mpath]
-              if rid:
-                  cmd += ["--release-id", rid]
-
-              try:
-                  subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-              except subprocess.CalledProcessError as e:
-                  invalid.append((mpath, e.output.decode("utf-8", errors="replace").strip()))
-                  continue
-
-              doc = json.load(open(mpath, "r", encoding="utf-8"))
-              compat = doc.get("compat") or {}
-
-              compat_strict = {k: compat.get(k) for k in STRICT_KEYS}
-              compat_relax  = {k: compat.get(k) for k in RELAX_KEYS}
-
-              if compat_strict == host_full:
-                  portable_strict.append(mpath)
-              elif compat_relax == host_relax:
-                  portable_relaxed.append((mpath, compat.get("machine","")))
-              else:
-                  # show diffs on relax keys for debugging
-                  diffs = {k: (compat_relax.get(k), host_relax.get(k)) for k in RELAX_KEYS if compat_relax.get(k) != host_relax.get(k)}
-                  host_bound.append((mpath, diffs))
-
-          print("=== Manifest portability report (Phase 96 Option C: 3-tier policy) ===")
-          print("Host full:", host_full)
-          print("Host relaxed keys:", host_relax)
-          print()
-
-          def show(title, items):
-              print(f"{title} ({len(items)}):")
-              if not items:
-                  print("  - (none)")
-              else:
-                  for x in items:
-                      if isinstance(x, tuple):
-                          print("  -", x[0])
-                      else:
-                          print("  -", x)
-              print()
-
-          show("PORTABLE_STRICT (match os/arch/python/impl/machine)", portable_strict)
-          show("PORTABLE_RELAXED (match os/arch/python/impl; machine ignored)", portable_relaxed)
-          show("HOST_BOUND (mismatch in relaxed keys)", host_bound)
-          show("INVALID (schema/invariants failed)", invalid)
-
-          if portable_relaxed:
-              print("Details: PORTABLE_RELAXED machine values (first 10)")
-              for p, m in portable_relaxed[:10]:
-                  print(" -", p)
-                  print("   manifest.machine:", m)
-              print()
-
-          if host_bound:
-              print("Details: HOST_BOUND diffs (first 10)")
-              for p, diffs in host_bound[:10]:
-                  print(" -", p)
-                  print("   diffs:", diffs)
-              print()
-
-          if invalid:
-              print("Details: INVALID errors (first 5)")
-              for p, err in invalid[:5]:
-                  print(" -", p)
-                  print("   error:", "\\n".join(err.splitlines()[:6]))
-              print()
-
-          print("Summary:",
-                f"portable_strict={len(portable_strict)}",
-                f"portable_relaxed={len(portable_relaxed)}",
-                f"host_bound={len(host_bound)}",
-                f"invalid={len(invalid)}")
-          PY
+          python3 scripts/ci_manifest_portability.py > portability_report.txt
           cat portability_report.txt
 
       - name: Upload portability report
@@ -256,20 +177,27 @@ jobs:
           if-no-files-found: warn
 
 
+  # ------------------------------------------------------------------
+  # Phase 104 — Signature verification report (read-only)
+  # ------------------------------------------------------------------
   signature-report:
-    name: Phase 104 - Signature verification report
+    name: Phase 104 – Signature verification report
     runs-on: ubuntu-latest
     needs: [deterministic-proof]
+
     steps:
       - uses: actions/checkout@v4
-      - name: Ensure scripts executable
+
+      - name: Ensure tools executable
         run: |
           chmod +x runtime/bin/signature_report || true
           chmod +x runtime/bin/verify_release_signatures || true
-      - name: Generate signature report (no mutation)
+
+      - name: Generate signature report
         run: |
           ./runtime/bin/signature_report > signature_report.txt
           cat signature_report.txt
+
       - name: Upload signature report
         uses: actions/upload-artifact@v4
         with:
