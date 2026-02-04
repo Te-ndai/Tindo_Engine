@@ -16,10 +16,6 @@ trap 'rm -f "$KEYFILE"' EXIT
 printf "%s\n" "$RELEASE_SIGNING_KEY_PEM" > "$KEYFILE"
 chmod 600 "$KEYFILE" || true
 
-signed=0
-scanned=0
-
-# Helper: does manifest declare signing already?
 declares_signing(){
   python3 - <<'PY' "$1"
 import json,sys
@@ -29,30 +25,29 @@ print("1" if isinstance(v,str) and v.strip() else "0")
 PY
 }
 
+signed=0
+scanned=0
 shopt -s nullglob
+
 for m in "$REL_DIR"/release_*.json; do
   scanned=$((scanned+1))
   rid="$(basename "$m")"; rid="${rid#release_}"; rid="${rid%.json}"
   b="$REL_DIR/release_${rid}.tar.gz"
 
-  # skip if missing bundle
   [ -f "$b" ] || { note "skip RID=$rid (bundle missing)"; continue; }
 
-  # skip if already signed
   if [ "$(declares_signing "$m")" = "1" ]; then
     note "skip RID=$rid (already declares signing)"
     continue
   fi
 
   note "sign RID=$rid"
-  # Try canonical CLI first, then fallback positional
-  if ./runtime/bin/attach_release_signatures --manifest "$m" --key "$KEYFILE" --pub "$PUB" >/dev/null 2>&1; then
-    :
-  else
-    ./runtime/bin/attach_release_signatures "$m" "$KEYFILE" "$PUB" >/dev/null
+
+  # Canonical CLI only. If this fails, show output and stop.
+  if ! ./runtime/bin/attach_release_signatures --manifest "$m" --key "$KEYFILE" --pub "$PUB"; then
+    die "attach_release_signatures failed for RID=$rid"
   fi
 
-  # validate + verify (should now pass)
   ./runtime/bin/validate_manifest "$m" >/dev/null
   ./runtime/bin/verify_release_signatures --manifest "$m" >/dev/null
 
