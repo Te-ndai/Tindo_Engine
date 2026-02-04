@@ -1,0 +1,4 @@
+DIAGNOSE 2026-02-04T10:29:26Z STATUS=OK
+FAIL=0 WARN=0 INFO=1
+[INFO] ALL_GOOD: system healthy
+  action: ./runtime/bin/ops status

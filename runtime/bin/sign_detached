@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Sign a file with RSA private key, output base64 signature.
+set -euo pipefail
+die(){ echo "ERROR: $*" >&2; exit 1; }
+
+KEY=""
+IN=""
+OUT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --key) shift; KEY="${1:-}"; shift ;;
+    --in)  shift; IN="${1:-}"; shift ;;
+    --out) shift; OUT="${1:-}"; shift ;;
+    -h|--help)
+      echo "usage: sign_detached --key priv.pem --in file --out file.sig.b64" >&2
+      exit 2
+      ;;
+    *) die "unknown arg: $1" ;;
+  esac
+done
+
+[ -n "$KEY" ] || die "missing --key"
+[ -n "$IN" ]  || die "missing --in"
+[ -n "$OUT" ] || die "missing --out"
+[ -f "$KEY" ] || die "key not found: $KEY"
+[ -f "$IN" ]  || die "input not found: $IN"
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+openssl dgst -sha256 -sign "$KEY" -out "$tmp" "$IN" >/dev/null 2>&1 || die "openssl sign failed"
+base64 -w 0 "$tmp" > "$OUT"
+echo "OK: signed: $IN -> $OUT"

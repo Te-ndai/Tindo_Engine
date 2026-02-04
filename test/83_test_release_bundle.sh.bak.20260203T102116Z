@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+./runtime/bin/release_bundle >/dev/null
+
+bundle="$(ls -1t runtime/state/releases/release_*.tar.gz | head -n 1)"
+manifest="$(ls -1t runtime/state/releases/release_*.json | head -n 1)"
+
+test -f "$bundle" || { echo "FAIL: bundle missing"; exit 1; }
+test -f "$manifest" || { echo "FAIL: manifest missing"; exit 1; }
+
+if ! tar -tzf "$bundle" | grep -q 'runtime/state/reports/diagnose.txt'; then
+  echo "FAIL: missing diagnose.txt in bundle"
+  echo "---- bundle listing (first 120) ----"
+  tar -tzf "$bundle" | sed -n '1,120p'
+  exit 1
+fi
+
+tar -tzf "$bundle" | grep -q 'runtime/state/logs/executions.chain.checkpoint.json' || { echo "FAIL: missing checkpoint in bundle"; exit 1; }
+tar -tzf "$bundle" | grep -q '^runtime/bin/' || { echo "FAIL: missing runtime/bin in bundle"; exit 1; }
+tar -tzf "$bundle" | grep -q '^runtime/bin/app' || { echo "FAIL: missing runtime/bin/app (entrypoint)"; exit 1; }
+
+
+
+# Operational release must include replay-critical commands
+tar -tzf "$bundle" | grep -q '^runtime/bin/logchain_verify$' || { echo "FAIL: missing logchain_verify in bundle"; exit 1; }
+tar -tzf "$bundle" | grep -q '^runtime/bin/rebuild_projections$' || { echo "FAIL: missing rebuild_projections in bundle"; exit 1; }
+tar -tzf "$bundle" | grep -q '^runtime/bin/ops$' || { echo "FAIL: missing ops in bundle"; exit 1; }
+
+echo "✅ Phase 83 TEST PASS"

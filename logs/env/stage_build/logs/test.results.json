@@ -1,0 +1,9 @@
+{
+  "phase": "3",
+  "action": "TEST",
+  "timestamp_utc": "2026-02-02T07:41:20Z",
+  "status": "PASS",
+  "message": "all staged checks passed",
+  "checks": [
+"stage build + populate logs exist","canonical entrypoint exists","host adapter contract exists","adapter linux required files exist","adapter linux manifest entrypoint + args_policy valid","adapter windows required files exist","adapter windows manifest entrypoint + args_policy valid","adapter macos required files exist","adapter macos manifest entrypoint + args_policy valid","adapter linux invoke purity ok","adapter macos invoke purity ok","adapter windows invoke purity ok","typed path contract + model exist + forbidden transition declared","capability lattice contract + model exist + schema markers present","command registry contract + executor stub exist"]
+}

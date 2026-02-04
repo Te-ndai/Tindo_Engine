@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CHAIN="runtime/state/logs/executions.chain.jsonl"
+
+python3 - <<'PY'
+import json, hashlib, os, sys
+
+path="runtime/state/logs/executions.chain.jsonl"
+if not os.path.exists(path):
+    print("ERROR: chain log missing:", path)
+    sys.exit(3)
+
+prev="0"*64
+n=0
+with open(path,"r",encoding="utf-8") as f:
+    for line in f:
+        line=line.strip()
+        if not line:
+            continue
+        ev=json.loads(line)
+
+        got_prev=ev.get("prev_sha256")
+        got_h=ev.get("line_sha256")
+        if got_prev != prev:
+            print("FAIL: prev mismatch at line", n+1)
+            sys.exit(1)
+
+        ev2=dict(ev)
+        ev2.pop("prev_sha256", None)
+        ev2.pop("line_sha256", None)
+
+        payload=json.dumps(ev2, sort_keys=True, separators=(",",":")).encode("utf-8")
+        h=hashlib.sha256(prev.encode("utf-8")+payload).hexdigest()
+
+        if got_h != h:
+            print("FAIL: hash mismatch at line", n+1)
+            sys.exit(1)
+
+        prev=h
+        n += 1
+
+print("PASS: chain ok, lines=", n)
+PY

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# usage:
+#   rebuild_projections            -> rebuild_all registry-driven
+#   rebuild_projections <name>     -> rebuild_one <name> (registry-driven output path)
+#
+# NOTE: ops auto-maintains chain; here we don't mutate logs, only projections.
+
+NAME="${1:-}"
+
+if [ -z "$NAME" ]; then
+  python3 runtime/core/projections.py rebuild_all >/dev/null
+  echo "OK: projections rebuilt (registry-driven)"
+  exit 0
+fi
+
+python3 runtime/core/projections.py rebuild_one "$NAME" >/dev/null
+echo "OK: projection rebuilt: $NAME"

@@ -1,0 +1,276 @@
+#!/usr/bin/envbash
+#test/84_test_restore_replay.sh
+#Phase84TEST:Restore+replayproofforreleasebundle
+set-euopipefail
+
+ROOT_DIR="$(cd"$(dirname"${BASH_SOURCE[0]}")/.."&&pwd)"
+cd"$ROOT_DIR"
+
+#----------helpers----------
+die(){echo"❌$*"1>&2;exit1;}
+
+require_file(){[-f"$1"]||die"missingfile:$1";}
+require_dir(){[-d"$1"]||die"missingdir:$1";}
+
+#Locatethenewestreleasebundle.
+#Expected:releases/*.tar.gzandacorrespondingmanifestjsonalongsideorinside.
+#IfyourPhase83wroteadifferentlocation,adjustRELEASE_GLOBonly.
+RELEASE_GLOB="runtime/state/releases/release_*.tar.gz"
+
+#shellcheckdisable=SC2086
+LATEST_TARBALL="$(ls-1t$RELEASE_GLOB2>/dev/null|head-n1||true)"
+[-n"$LATEST_TARBALL"]||die"noreleasetarballfoundat:$RELEASE_GLOB"
+
+echo"Usingreleasetarball:$LATEST_TARBALL"
+
+#Createcleanrestoredir
+RESTORE_DIR="$(mktemp-d)"
+cleanup(){rm-rf"$RESTORE_DIR";}
+trapcleanupEXIT
+
+#Unpack
+tar-xzf"$LATEST_TARBALL"-C"$RESTORE_DIR"
+
+#Heuristic:bundlerootshouldcontainruntime/andamanifestjson.
+#Trycommonnames/locationsinsiderestoredbundle.
+MANIFEST_PATH=""
+forcandin\
+"$RESTORE_DIR/release.manifest.json"\
+"$RESTORE_DIR/manifest.json"\
+"$RESTORE_DIR/runtime.manifest.json"\
+"$RESTORE_DIR/runtime/state/releases/release.manifest.json"\
+"$RESTORE_DIR/runtime/state/releases/manifest.json"
+do
+if[-f"$cand"];thenMANIFEST_PATH="$cand";break;fi
+done
+
+#Ifstillnotfound,pickthenewestrelease_*.jsonanywhereunderrestoredir.
+if[-z"$MANIFEST_PATH"];then
+MANIFEST_PATH="$(find"$RESTORE_DIR"-typef-name'release_*.json'2>/dev/null|sort|tail-n1||true)"
+fi
+
+[-n"$MANIFEST_PATH"]||die"couldnotfindmanifestjsoninrestoredbundle"
+echo"Foundmanifest:$MANIFEST_PATH"
+
+
+#Mustcontainruntime/
+require_dir"$RESTORE_DIR/runtime"
+require_dir"$RESTORE_DIR/runtime/bin"
+#Makeentrypointexecutablejustincasetarpreservedpermspoorly
+#----------readexpectationsfrommanifest----------
+#Weonlyassertwhatwecanrobustlyfind.Thisavoidsbrittlecoupling.
+#Expectedfields(recommended):
+#-expected_event_count
+#-expected_last_event_time_utc
+#Ifabsent,weassertintegrity+thatreplayproducesnon-emptyprojections/reports.
+
+python3-<<'PY'"$MANIFEST_PATH">"$RESTORE_DIR/_expected.json"
+importjson,sys
+p=sys.argv[1]
+m=json.load(open(p,"r",encoding="utf-8"))
+
+defpick(*keys):
+cur=m
+forkinkeys:
+ifisinstance(cur,dict)andkincur:
+cur=cur[k]
+else:
+returnNone
+returncur
+
+out={
+"expected_event_count":(
+m.get("expected_event_count")
+orpick("expectations","event_count")
+orpick("runtime","state","logs","event_count")
+),
+"expected_last_event_time_utc":(
+m.get("expected_last_event_time_utc")
+orpick("expectations","last_event_time_utc")
+orpick("runtime","state","logs","last_event_time_utc")
+),
+}
+print(json.dumps(out))
+PY
+
+EXPECTED_EVENT_COUNT="$(python3-c'importjson,sys;d=json.load(open(sys.argv[1]));print(""ifd.get("expected_event_count")isNoneelsed["expected_event_count"])'"$RESTORE_DIR/_expected.json")"
+EXPECTED_LAST_EVENT_TIME="$(python3-c'importjson,sys;d=json.load(open(sys.argv[1]));print(""ifd.get("expected_last_event_time_utc")isNoneelsed["expected_last_event_time_utc"])'"$RESTORE_DIR/_expected.json")"
+
+echo"Expectedeventcount:${EXPECTED_EVENT_COUNT:-<unspecified>}"
+echo"Expectedlast_event_time_utc:${EXPECTED_LAST_EVENT_TIME:-<unspecified>}"
+
+#----------runrestoreverification+replay----------
+#Ifyourruntimeusesdifferentverbs,renamethemhereONLY.
+BIN="$RESTORE_DIR/runtime/bin"
+
+LOGCHAIN_VERIFY="$BIN/logchain_verify"
+REBUILD_PROJECTIONS="$BIN/rebuild_projections"
+OPS="$BIN/ops"
+
+require_file"$LOGCHAIN_VERIFY"
+require_file"$REBUILD_PROJECTIONS"
+require_file"$OPS"
+
+chmod+x"$LOGCHAIN_VERIFY""$REBUILD_PROJECTIONS""$OPS"||true
+#1)logchain_verify
+echo"Running:logchain_verify"
+"$LOGCHAIN_VERIFY"--root"$RESTORE_DIR/runtime"||die"logchain_verifyfailed"
+
+#2)rebuild_projections
+echo"Running:rebuild_projections"
+REBUILD_OUT="$RESTORE_DIR/_rebuild_projections.out"
+REBUILD_ERR="$RESTORE_DIR/_rebuild_projections.err"
+REBUILD_XTRACE="$RESTORE_DIR/_rebuild_projections.xtrace"
+
+#TrymodeA:explicit--root(preferred)
+set+e
+(cd"$RESTORE_DIR"&&"$REBUILD_PROJECTIONS"--root"$RESTORE_DIR/runtime">"$REBUILD_OUT"2>"$REBUILD_ERR")
+rc=$?
+set-e
+
+#IfmodeAfails,trymodeB:cwd-based(noargs)
+if["$rc"-ne0];then
+set+e
+(cd"$RESTORE_DIR"&&"$REBUILD_PROJECTIONS">"$REBUILD_OUT"2>"$REBUILD_ERR")
+rc=$?
+set-e
+fi
+
+#Ifstillfailingandnostderr,runxtracetoforcevisibility
+if["$rc"-ne0];then
+if[!-s"$REBUILD_ERR"]&&[!-s"$REBUILD_OUT"];then
+set+e
+(cd"$RESTORE_DIR"&&bash-x"$REBUILD_PROJECTIONS"--root"$RESTORE_DIR/runtime")>"$REBUILD_XTRACE"2>&1
+set-e
+fi
+echo"❌rebuild_projectionsfailed(exit=$rc)"
+echo"----stdout----"
+sed-n'1,200p'"$REBUILD_OUT"||true
+echo"----stderr----"
+sed-n'1,200p'"$REBUILD_ERR"||true
+echo"----xtrace(first200)----"
+sed-n'1,200p'"$REBUILD_XTRACE"||true
+echo"----rebuild_projectionsfileheader----"
+sed-n'1,60p'"$REBUILD_PROJECTIONS"||true
+exit1
+fi
+#3)opsreport
+echo"Running:opsreport"
+OPS_JSON="$RESTORE_DIR/_ops_report.json"
+OPS_OUT="$RESTORE_DIR/_ops_report.out"
+OPS_ERR="$RESTORE_DIR/_ops_report.err"
+
+#TryJSONmodefirst(stdout).IfnotJSON/empty,fallback.
+set+e
+(cd"$RESTORE_DIR"&&"$OPS"report--root"$RESTORE_DIR/runtime"--formatjson>"$OPS_OUT"2>"$OPS_ERR")
+rc=$?
+set-e
+
+if["$rc"-ne0]||[!-s"$OPS_OUT"];then
+#Fallback1:--json
+set+e
+:>"$OPS_OUT";:>"$OPS_ERR"
+(cd"$RESTORE_DIR"&&"$OPS"report--root"$RESTORE_DIR/runtime"--json>"$OPS_OUT"2>"$OPS_ERR")
+rc=$?
+set-e
+fi
+
+if["$rc"-ne0]||[!-s"$OPS_OUT"];then
+#Fallback2:plain(maybetext)
+set+e
+:>"$OPS_OUT";:>"$OPS_ERR"
+(cd"$RESTORE_DIR"&&"$OPS"report--root"$RESTORE_DIR/runtime">"$OPS_OUT"2>"$OPS_ERR")
+rc=$?
+set-e
+fi
+
+if["$rc"-ne0];then
+echo"❌opsreportfailed(exit=$rc)"
+echo"----opsstdout----"
+sed-n'1,200p'"$OPS_OUT"||true
+echo"----opsstderr----"
+sed-n'1,200p'"$OPS_ERR"||true
+exit1
+fi
+
+#IfstdoutisvalidJSON,copyittoOPS_JSON;otherwisekeeptextinOPS_OUT.
+python3-<<'PY2'"$OPS_OUT""$OPS_JSON"
+importjson,sys
+src,dst=sys.argv[1],sys.argv[2]
+txt=open(src,"r",encoding="utf-8",errors="replace").read().strip()
+ifnottxt:
+open(dst,"w",encoding="utf-8").write("")
+raiseSystemExit(0)
+try:
+json.loads(txt)
+open(dst,"w",encoding="utf-8").write(txt)
+exceptException:
+open(dst,"w",encoding="utf-8").write("")
+PY2
+
+if[-s"$OPS_JSON"];then
+echo"opsreport:JSONOK"
+else
+echo"opsreport:non-JSONoutput(continuingwithlimitedassertions)"
+fi
+
+#----------assertresults----------
+#Parseopsreportforactuals.Welookforobviouskeys:
+#-event_count
+#-last_event_time_utc
+if [ -s "$OPS_JSON" ]; then
+  python3-<<'PY'"$OPS_JSON">"$RESTORE_DIR/_actual.json"
+  importjson,sys
+  
+  o=json.load(open(sys.argv[1],"r",encoding="utf-8"))
+  
+  deffind_key(obj,targets):
+  ifisinstance(obj,dict):
+  fork,vinobj.items():
+  ifkintargets:
+  returnv
+  forvinobj.values():
+  r=find_key(v,targets)
+  ifrisnotNone:returnr
+  elifisinstance(obj,list):
+  foritinobj:
+  r=find_key(it,targets)
+  ifrisnotNone:returnr
+  returnNone
+  
+  out={
+  "event_count":find_key(o,{"event_count","events","log_event_count"}),
+  "last_event_time_utc":find_key(o,{"last_event_time_utc","last_event_utc","last_event_time"}),
+  }
+  print(json.dumps(out))
+  PY
+  
+  ACTUAL_EVENT_COUNT="$(python3-c'importjson,sys;d=json.load(open(sys.argv[1]));print(""ifd.get("event_count")isNoneelsed["event_count"])'"$RESTORE_DIR/_actual.json")"
+  ACTUAL_LAST_EVENT_TIME="$(python3-c'importjson,sys;d=json.load(open(sys.argv[1]));print(""ifd.get("last_event_time_utc")isNoneelsed["last_event_time_utc"])'"$RESTORE_DIR/_actual.json")"
+  
+else
+  echo "Skipping JSON actuals parsing (ops report not JSON)"
+  ACTUAL_EVENT_COUNT=""
+  ACTUAL_LAST_EVENT_TIME=""
+fi
+echo"Actualeventcount:${ACTUAL_EVENT_COUNT:-<unknown>}"
+echo"Actuallast_event_time_utc:${ACTUAL_LAST_EVENT_TIME:-<unknown>}"
+
+#Ifexpectedvaluesexist,enforceequality.
+if[-n"${EXPECTED_EVENT_COUNT:-}"];then
+[-n"${ACTUAL_EVENT_COUNT:-}"]||die"manifestspecifiesexpected_event_countbutopsreportdidnotprovideevent_count"
+["$ACTUAL_EVENT_COUNT"="$EXPECTED_EVENT_COUNT"]||die"event_countmismatch:expected=$EXPECTED_EVENT_COUNTactual=$ACTUAL_EVENT_COUNT"
+fi
+
+if[-n"${EXPECTED_LAST_EVENT_TIME:-}"];then
+[-n"${ACTUAL_LAST_EVENT_TIME:-}"]||die"manifestspecifiesexpected_last_event_time_utcbutopsreportdidnotprovidelast_event_time_utc"
+["$ACTUAL_LAST_EVENT_TIME"="$EXPECTED_LAST_EVENT_TIME"]||die"last_event_time_utcmismatch:expected=$EXPECTED_LAST_EVENT_TIMEactual=$ACTUAL_LAST_EVENT_TIME"
+fi
+
+#Minimaloperationalassertions(evenifmanifestdoesn'tspecifycounts):
+#Projectionsdirectoryshouldexistandbenon-emptyafterrebuild.
+PROJ_DIR="$RESTORE_DIR/runtime/state/projections"
+require_dir"$PROJ_DIR"
+["$(ls-A"$PROJ_DIR"|wc-l|tr-d'')"-gt0]||die"projectionsareemptyafterrebuild"
+
+echo"✅Phase84TESTPASS(restore+replayproof)"

@@ -1,0 +1,10 @@
+{
+  "phase": "1",
+  "action": "BUILD",
+  "timestamp_utc": "2026-02-02T07:23:00Z",
+  "stage_root": "logs/env/stage_build",
+  "dirs": [
+".","./build","./logs","./populate","./promote","./runtime","./runtime/bin","./runtime/core","./runtime/host_adapters","./runtime/host_adapters/linux","./runtime/host_adapters/macos","./runtime/host_adapters/windows","./runtime/schema","./runtime/simulators","./runtime/simulators/slots","./runtime/state","./runtime/state/cache","./runtime/state/logs","./runtime/state/projections","./specs","./test"],
+  "files": [
+"./runtime/bin/app_entry","./runtime/core/__init__.py","./runtime/core/capability.py","./runtime/core/executor.py","./runtime/core/path_model.py","./runtime/host_adapters/linux/install.sh","./runtime/host_adapters/linux/invoke.sh","./runtime/host_adapters/linux/manifest.json","./runtime/host_adapters/linux/uninstall.sh","./runtime/host_adapters/macos/install.sh","./runtime/host_adapters/macos/invoke.sh","./runtime/host_adapters/macos/manifest.json","./runtime/host_adapters/macos/uninstall.sh","./runtime/host_adapters/windows/install.ps1","./runtime/host_adapters/windows/invoke.ps1","./runtime/host_adapters/windows/manifest.json","./runtime/host_adapters/windows/uninstall.ps1","./runtime/schema/capability_lattice.json","./runtime/schema/command_registry.json","./runtime/schema/host_adapter_contract.json","./runtime/schema/typed_path_contract.json","./runtime/simulators/README.md","./runtime/simulators/registry.json"]
+}

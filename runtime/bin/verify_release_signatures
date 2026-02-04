@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Verify release manifest + tarball signatures using public key.
+set -euo pipefail
+die(){ echo "ERROR: $*" >&2; exit 1; }
+
+PUB=""
+MANIFEST=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pub) shift; PUB="${1:-}"; shift ;;
+    --manifest) shift; MANIFEST="${1:-}"; shift ;;
+    -h|--help)
+      echo "usage: verify_release_signatures --pub pub.pem --manifest release_<RID>.json" >&2
+      exit 2
+      ;;
+    *) die "unknown arg: $1" ;;
+  esac
+done
+
+# Phase 99A: default to repo public key if --pub not provided
+if [ -z "$PUB" ] && [ -f "runtime/state/keys/release_pub.pem" ]; then
+  PUB="runtime/state/keys/release_pub.pem"
+fi
+
+[ -n "$PUB" ] || die "missing --pub"
+[ -n "$MANIFEST" ] || die "missing --manifest"
+[ -f "$PUB" ] || die "pub not found: $PUB"
+[ -f "$MANIFEST" ] || die "manifest not found: $MANIFEST"
+
+bundle="$(python3 - <<'PY' "$MANIFEST"
+import json,sys
+m=json.load(open(sys.argv[1],"r",encoding="utf-8"))
+print(m.get("bundle_path",""))
+PY
+)"
+
+[ -n "$bundle" ] || die "manifest missing bundle_path"
+[ -f "$bundle" ] || die "bundle not found at bundle_path: $bundle"
+
+msig="${MANIFEST}.sig.b64"
+bsig="${bundle}.sig.b64"
+
+[ -f "$msig" ] || die "missing manifest signature: $msig"
+[ -f "$bsig" ] || die "missing bundle signature: $bsig"
+
+./runtime/bin/verify_detached --pub "$PUB" --in "$MANIFEST" --sig "$msig"
+./runtime/bin/verify_detached --pub "$PUB" --in "$bundle" --sig "$bsig"
+echo "OK: release signatures verified"

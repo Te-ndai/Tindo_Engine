@@ -1,0 +1,77 @@
+PHASE 102 HYGIENE
+timestamp_utc=20260204T100547Z
+mode=dry-run
+root=/mnt/c/Users/Tendai/Desktop/Blup/SF/V2/Root
+scan_dir=runtime/state/releases
+
+RID | status | reason | moved_to
+----|--------|--------|--------
+20260202T132338Z | OK | - | -
+20260202T133014Z | OK | - | -
+20260202T134748Z | OK | - | -
+20260202T134804Z | OK | - | -
+20260203T101906Z | OK | - | -
+20260203T101930Z | OK | - | -
+20260203T102124Z | OK | - | -
+20260203T102411Z | OK | - | -
+20260203T102535Z | OK | - | -
+20260203T103404Z | OK | - | -
+20260203T103944Z | OK | - | -
+20260203T105331Z | OK | - | -
+20260203T105353Z | OK | - | -
+20260203T105957Z | OK | - | -
+20260203T110614Z | OK | - | -
+20260203T110615Z | OK | - | -
+20260203T111533Z | OK | - | -
+20260203T111536Z | OK | - | -
+20260203T111537Z | OK | - | -
+20260203T112536Z | OK | - | -
+20260203T112537Z | OK | - | -
+20260203T112539Z | OK | - | -
+20260203T120158Z | OK | - | -
+20260203T120201Z | OK | - | -
+20260203T120203Z | OK | - | -
+20260203T120459Z | OK | - | -
+20260203T120503Z | OK | - | -
+20260203T120504Z | OK | - | -
+20260203T121603Z | QUARANTINE | manifest_invalid:INVALID: bundle_sha256 must be 64-char lowercase hex  | runtime/state/releases/legacy/manifest_invalid_INVALID__bundle_sha256_must_be_64-char_lowercase_hex_/release_20260203T121603Z
+20260203T122312Z | QUARANTINE | manifest_invalid:INVALID: bundle_sha256 must be 64-char lowercase hex  | runtime/state/releases/legacy/manifest_invalid_INVALID__bundle_sha256_must_be_64-char_lowercase_hex_/release_20260203T122312Z
+20260203T122529Z | QUARANTINE | manifest_invalid:INVALID: bundle_sha256 must be 64-char lowercase hex  | runtime/state/releases/legacy/manifest_invalid_INVALID__bundle_sha256_must_be_64-char_lowercase_hex_/release_20260203T122529Z
+20260203T122749Z | QUARANTINE | manifest_invalid:INVALID: bundle_sha256 must be 64-char lowercase hex  | runtime/state/releases/legacy/manifest_invalid_INVALID__bundle_sha256_must_be_64-char_lowercase_hex_/release_20260203T122749Z
+20260203T123500Z | OK | - | -
+20260203T123901Z | OK | - | -
+20260203T123921Z | OK | - | -
+20260203T125126Z | OK | - | -
+20260203T125731Z | OK | - | -
+20260203T130007Z | OK | - | -
+20260203T130846Z | OK | - | -
+20260203T132244Z | OK | - | -
+20260203T132808Z | OK | - | -
+20260203T133851Z | OK | - | -
+20260203T133932Z | OK | - | -
+20260204T061703Z | QUARANTINE | manifest_invalid:INVALID: signing_alg must be rsa-sha256-b64  | runtime/state/releases/legacy/manifest_invalid_INVALID__signing_alg_must_be_rsa-sha256-b64_/release_20260204T061703Z
+20260204T062108Z | QUARANTINE | manifest_invalid:INVALID: signing_alg must be rsa-sha256-b64  | runtime/state/releases/legacy/manifest_invalid_INVALID__signing_alg_must_be_rsa-sha256-b64_/release_20260204T062108Z
+20260204T072151Z | OK | - | -
+20260204T074029Z | OK | - | -
+20260204T080953Z | OK | - | -
+20260204T084959Z | OK | - | -
+20260204T085658Z | OK | - | -
+20260204T085952Z | OK | - | -
+20260204T090156Z | OK | - | -
+20260204T090337Z | OK | - | -
+20260204T092436Z | OK | - | -
+20260204T092438Z | OK | - | -
+20260204T093206Z | OK | - | -
+20260204T093326Z | OK | - | -
+20260204T093640Z | OK | - | -
+20260204T094114Z | OK | - | -
+20260204T094157Z | OK | - | -
+20260204T095147Z | QUARANTINE | manifest_invalid:INVALID: declared manifest signature missing: release_20260204T095147Z.json.sig.b64  | runtime/state/releases/legacy/manifest_invalid_INVALID__declared_manifest_signature_missing__release_20260204T095147Z.json.sig.b64_/release_20260204T095147Z
+20260204T095319Z | OK | - | -
+20260204T095336Z | OK | - | -
+
+SUMMARY
+total_manifests=63
+ok_kept=56
+quarantined=7
+moved=0

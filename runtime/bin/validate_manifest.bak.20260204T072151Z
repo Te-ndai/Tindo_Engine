@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage(){
+  echo "usage: validate_manifest <manifest.json> [--release-id RID]" >&2
+  exit 2
+}
+
+[ $# -ge 1 ] || usage
+manifest="$1"; shift
+
+rid=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --release-id) shift; rid="${1:-}"; [ -n "$rid" ] || usage; shift ;;
+    -h|--help) usage ;;
+    *) echo "ERROR: unknown arg: $1" >&2; usage ;;
+  esac
+done
+
+python3 - <<'PY' "$manifest" "$rid"
+import json, os, re, sys
+
+manifest_path = sys.argv[1]
+rid = sys.argv[2] or None
+schema_path = os.path.join("runtime", "schema", "release_manifest.schema.json")
+
+def fail(msg):
+    raise SystemExit("ERROR: " + msg)
+
+def load_json(p):
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        fail(f"missing file: {p}")
+    except json.JSONDecodeError as e:
+        fail(f"invalid JSON in {p}: {e}")
+
+schema = load_json(schema_path)
+doc = load_json(manifest_path)
+
+def check_type(v, t):
+    if t == "object": return isinstance(v, dict)
+    if t == "string": return isinstance(v, str)
+    if t == "integer": return isinstance(v, int) and not isinstance(v, bool)
+    if t == "boolean": return isinstance(v, bool)
+    return False
+
+def validate_obj(obj, sch, path="$"):
+    if sch.get("type") != "object":
+        fail(f"{path}: schema type must be object")
+    if not isinstance(obj, dict):
+        fail(f"{path}: expected object")
+
+    for k in sch.get("required", []):
+        if k not in obj:
+            fail(f"{path}: missing required field: {k}")
+
+    props = sch.get("properties", {})
+    for k, ps in props.items():
+        if k not in obj:
+            continue
+        v = obj[k]
+        t = ps.get("type")
+        if t and not check_type(v, t):
+            fail(f"{path}.{k}: wrong type (expected {t})")
+
+        if t == "integer":
+            mn = ps.get("minimum")
+            if mn is not None and v < mn:
+                fail(f"{path}.{k}: must be >= {mn}")
+
+        if t == "string":
+            mnlen = ps.get("minLength")
+            if mnlen is not None and len(v) < mnlen:
+                fail(f"{path}.{k}: minLength {mnlen}")
+            pat = ps.get("pattern")
+            if pat is not None and not re.match(pat, v):
+                fail(f"{path}.{k}: pattern mismatch")
+
+        if t == "object":
+            validate_obj(v, ps, f"{path}.{k}")
+
+validate_obj(doc, schema, "$")
+
+# Cross-field invariants
+if rid is not None and doc.get("release_id") != rid:
+    fail(f"release_id mismatch: manifest={doc.get('release_id')!r} expected={rid!r}")
+
+expected_bundle = f"runtime/state/releases/release_{doc['release_id']}.tar.gz"
+if doc.get("bundle_path") != expected_bundle:
+    fail(f"bundle_path mismatch: {doc.get('bundle_path')!r} expected={expected_bundle!r}")
+
+c = doc["compat"]
+for k in ("os", "arch", "impl"):
+    if c.get(k) != c.get(k, "").lower():
+        fail(f"compat.{k} must be lowercase")
+
+print("OK: manifest validated against schema + invariants")
+PY

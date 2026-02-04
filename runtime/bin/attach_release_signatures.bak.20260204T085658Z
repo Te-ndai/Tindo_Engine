@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Attach detached signatures to an existing release (manifest + tarball) without minting.
+# Mutates the manifest ONCE to add signature metadata, then signs the final manifest bytes.
+set -euo pipefail
+die(){ echo "ERROR: $*" >&2; exit 1; }
+
+MANIFEST=""
+KEY=""
+PUB=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --manifest) shift; MANIFEST="${1:-}"; shift ;;
+    --key)      shift; KEY="${1:-}"; shift ;;
+    --pub)      shift; PUB="${1:-}"; shift ;;
+    -h|--help)
+      echo "usage: attach_release_signatures --manifest release_<RID>.json --key priv.pem --pub pub.pem" >&2
+      exit 2
+      ;;
+    *) die "unknown arg: $1" ;;
+  esac
+done
+
+[ -n "$MANIFEST" ] || die "missing --manifest"
+[ -n "$KEY" ] || die "missing --key"
+[ -n "$PUB" ] || die "missing --pub"
+[ -f "$MANIFEST" ] || die "manifest not found: $MANIFEST"
+[ -f "$KEY" ] || die "key not found: $KEY"
+[ -f "$PUB" ] || die "pub not found: $PUB"
+
+bundle="$(python3 - <<'PY' "$MANIFEST"
+import json,sys
+m=json.load(open(sys.argv[1],"r",encoding="utf-8"))
+print(m.get("bundle_path",""))
+PY
+)"
+[ -n "$bundle" ] || die "manifest missing bundle_path"
+[ -f "$bundle" ] || die "bundle not found at bundle_path: $bundle"
+
+msig="${MANIFEST}.sig.b64"
+bsig="${bundle}.sig.b64"
+fp="$(sha256sum "$PUB" | awk '{print $1}')"
+
+# 1) Update manifest with signature metadata BEFORE signing it.
+python3 - <<'PY' "$MANIFEST" "$fp" "$msig" "$bsig"
+import json, sys
+mp, fp, msig, bsig = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+d=json.load(open(mp,"r",encoding="utf-8"))
+
+# If it's already signed, refuse (signatures would become meaningless if we mutate afterwards)
+if d.get("manifest_sig_b64_path") or d.get("bundle_sig_b64_path") or d.get("signing_pub_fingerprint_sha256"):
+    raise SystemExit("ERROR: manifest already has signing metadata; refusing to mutate")
+
+d["signing_alg"rsa-sha256-b64-b64"openssl-rsa-sha256-b64"
+d["signing_pub_fingerprint_sha256"] = fp
+d["manifest_sig_b64_path"] = msig
+d["bundle_sig_b64_path"] = bsig
+
+json.dump(d, open(mp,"w",encoding="utf-8"), indent=2, sort_keys=True)
+open(mp,"a",encoding="utf-8").write("\n")
+print("OK: manifest updated with signing metadata (pre-sign)")
+PY
+
+# 2) Sign final manifest bytes and tarball bytes (detached)
+./runtime/bin/sign_detached --key "$KEY" --in "$MANIFEST" --out "$msig" >/dev/null
+./runtime/bin/sign_detached --key "$KEY" --in "$bundle"   --out "$bsig" >/dev/null
+
+# 3) Validate manifest invariants after attach
+rid="$(python3 - <<'PY' "$MANIFEST"
+import json,sys
+m=json.load(open(sys.argv[1],"r",encoding="utf-8"))
+print(m.get("release_id",""))
+PY
+)"
+if [ -n "$rid" ]; then
+  ./runtime/bin/validate_manifest "$MANIFEST" --release-id "$rid" >/dev/null
+else
+  ./runtime/bin/validate_manifest "$MANIFEST" >/dev/null
+fi
+
+echo "OK: attached signatures:"
+echo " - $msig"
+echo " - $bsig"

@@ -1,0 +1,37 @@
+PHASE 102 HYGIENE
+timestamp_utc=20260204T100658Z
+mode=apply
+root=/mnt/c/Users/Tendai/Desktop/Blup/SF/V2/Root
+scan_dir=runtime/state/releases
+
+RID | status | reason | moved_to
+----|--------|--------|--------
+20260202T132338Z | OK | - | -
+20260202T133014Z | OK | - | -
+20260202T134748Z | OK | - | -
+20260202T134804Z | OK | - | -
+20260203T101906Z | OK | - | -
+20260203T101930Z | OK | - | -
+20260203T102124Z | OK | - | -
+20260203T102411Z | OK | - | -
+20260203T102535Z | OK | - | -
+20260203T103404Z | OK | - | -
+20260203T103944Z | OK | - | -
+20260203T105331Z | OK | - | -
+20260203T105353Z | OK | - | -
+20260203T105957Z | OK | - | -
+20260203T110614Z | OK | - | -
+20260203T110615Z | OK | - | -
+20260203T111533Z | OK | - | -
+20260203T111536Z | OK | - | -
+20260203T111537Z | OK | - | -
+20260203T112536Z | OK | - | -
+20260203T112537Z | OK | - | -
+20260203T112539Z | OK | - | -
+20260203T120158Z | OK | - | -
+20260203T120201Z | OK | - | -
+20260203T120203Z | OK | - | -
+20260203T120459Z | OK | - | -
+20260203T120503Z | OK | - | -
+20260203T120504Z | OK | - | -
+20260203T121603Z | QUARANTINE | manifest_invalid:INVALID: bundle_sha256 must be 64-char lowercase hex  | runtime/state/releases/legacy/manifest_invalid_INVALID__bundle_sha256_must_be_64-char_lowercase_hex_/release_20260203T121603Z

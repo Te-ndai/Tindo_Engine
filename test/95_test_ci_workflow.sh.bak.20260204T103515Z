@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Phase 95/96 TEST: CI workflow exists, runs Phase 90, includes portability job (3-tier policy), and uploads artifacts.
+set -euo pipefail
+
+die(){ echo "FAIL: $*" >&2; exit 1; }
+ok(){ echo "OK: $*"; }
+
+wf=".github/workflows/ci.yml"
+[ -f "$wf" ] || die "missing workflow: $wf"
+
+# Core steps
+grep -q 'actions/checkout@' "$wf" || die "workflow missing actions/checkout step"
+grep -q 'actions/setup-python@' "$wf" || die "workflow missing actions/setup-python step"
+
+# Job 1: deterministic proof
+grep -q 'deterministic-proof' "$wf" || die "workflow missing deterministic-proof job"
+grep -q './test/90_test_all_deterministic.sh' "$wf" || die "workflow does not run test/90_test_all_deterministic.sh"
+
+# Artifact: runtime releases
+grep -q 'actions/upload-artifact@' "$wf" || die "workflow missing artifact upload action"
+grep -q 'name: runtime-releases' "$wf" || die "workflow missing runtime-releases artifact name"
+
+# Job 2: portability report exists and uses validator
+grep -q 'manifest-portability-report' "$wf" || die "workflow missing manifest-portability-report job"
+grep -q 'runtime/bin/validate_manifest' "$wf" || die "workflow portability job does not invoke validate_manifest"
+grep -q 'portability_report.txt' "$wf" || die "workflow portability job does not create portability_report.txt"
+grep -q 'name: portability-report' "$wf" || die "workflow missing portability-report artifact name"
+
+# Phase 96 (Option C) 3-tier policy must be present in the workflow text
+grep -q 'PORTABLE_STRICT' "$wf" || die "workflow missing PORTABLE_STRICT tier"
+grep -q 'PORTABLE_RELAXED' "$wf" || die "workflow missing PORTABLE_RELAXED tier"
+grep -q 'HOST_BOUND' "$wf" || die "workflow missing HOST_BOUND tier"
+grep -q '3-tier' "$wf" || die "workflow missing explicit 3-tier policy marker"
+
+ok "workflow includes Phase 90 + 3-tier portability policy + artifacts"
+echo "✅ Phase 95/96 TEST PASS"
+
+# Phase 103: hygiene report job must exist and upload hygiene-report artifact
+grep -qE 'hygiene_report:' "$wf" || die "workflow missing Phase 103 hygiene_report job"
+grep -qE 'name:\s*hygiene-report' "$wf" || die "workflow hygiene job does not upload hygiene-report artifact"
+grep -qE 'patch102_hygiene\.sh[[:space:]]+--dry-run' "$wf" || die "workflow hygiene job does not run patch102_hygiene.sh --dry-run"

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+die(){ echo "ERROR: $*" >&2; exit 1; }
+note(){ echo "==> $*" >&2; }
+
+REL_DIR="${1:-runtime/state/releases}"
+PUB="runtime/state/keys/release_pub.pem"
+
+[ -d "$REL_DIR" ] || die "missing releases dir: $REL_DIR"
+[ -f "$PUB" ] || die "missing repo pubkey: $PUB"
+[ -n "${RELEASE_SIGNING_KEY_PEM:-}" ] || die "missing env: RELEASE_SIGNING_KEY_PEM"
+
+# write secret key to temp file (CI only)
+KEYFILE="$(mktemp)"
+trap 'rm -f "$KEYFILE"' EXIT
+printf "%s\n" "$RELEASE_SIGNING_KEY_PEM" > "$KEYFILE"
+chmod 600 "$KEYFILE" || true
+
+signed=0
+scanned=0
+
+# Helper: does manifest declare signing already?
+declares_signing(){
+  python3 - <<'PY' "$1"
+import json,sys
+m=json.load(open(sys.argv[1],'r',encoding='utf-8'))
+v=m.get("signing_alg","")
+print("1" if isinstance(v,str) and v.strip() else "0")
+PY
+}
+
+shopt -s nullglob
+for m in "$REL_DIR"/release_*.json; do
+  scanned=$((scanned+1))
+  rid="$(basename "$m")"; rid="${rid#release_}"; rid="${rid%.json}"
+  b="$REL_DIR/release_${rid}.tar.gz"
+
+  # skip if missing bundle
+  [ -f "$b" ] || { note "skip RID=$rid (bundle missing)"; continue; }
+
+  # skip if already signed
+  if [ "$(declares_signing "$m")" = "1" ]; then
+    note "skip RID=$rid (already declares signing)"
+    continue
+  fi
+
+  note "sign RID=$rid"
+  # Try canonical CLI first, then fallback positional
+  if ./runtime/bin/attach_release_signatures --manifest "$m" --key "$KEYFILE" --pub "$PUB" >/dev/null 2>&1; then
+    :
+  else
+    ./runtime/bin/attach_release_signatures "$m" "$KEYFILE" "$PUB" >/dev/null
+  fi
+
+  # validate + verify (should now pass)
+  ./runtime/bin/validate_manifest "$m" >/dev/null
+  ./runtime/bin/verify_release_signatures --manifest "$m" >/dev/null
+
+  signed=$((signed+1))
+done
+
+note "done: scanned=$scanned signed=$signed rel_dir=$REL_DIR"
+echo "scanned=$scanned signed=$signed"

@@ -1,0 +1,48 @@
+{
+  "checked_at_utc": "2026-02-04T10:29:26Z",
+  "errors": [],
+  "last_event_time_utc": "",
+  "ok": 1,
+  "projection": "system_status",
+  "projections": [
+    {
+      "details": "ok lines=16",
+      "name": "log_integrity",
+      "status": "OK"
+    },
+    {
+      "last_event_time_utc": "2026-02-02T13:16:04Z",
+      "log_last_event_time_utc": "2026-02-02T13:16:04Z",
+      "name": "executions_summary",
+      "output_mtime_utc": "2026-02-04T10:29:26Z",
+      "stale": 0,
+      "status": "OK"
+    },
+    {
+      "last_event_time_utc": "2026-02-02T13:16:04Z",
+      "log_last_event_time_utc": "2026-02-02T13:16:04Z",
+      "name": "commands_summary",
+      "output_mtime_utc": "2026-02-04T10:29:26Z",
+      "stale": 0,
+      "status": "OK"
+    },
+    {
+      "last_event_time_utc": "",
+      "log_last_event_time_utc": "",
+      "name": "system_status",
+      "output_mtime_utc": "",
+      "stale": 0,
+      "status": "OK"
+    },
+    {
+      "last_event_time_utc": "",
+      "log_last_event_time_utc": "",
+      "name": "diagnose",
+      "output_mtime_utc": "2026-02-04T10:29:26Z",
+      "stale": 0,
+      "status": "OK"
+    }
+  ],
+  "source": "",
+  "total": 0
+}

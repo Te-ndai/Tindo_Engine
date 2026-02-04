@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+die(){ echo "ERROR: $*" >&2; exit 1; }
+note(){ echo "==> $*" >&2; }
+
+ROOT="$(pwd)"
+REL_DIR="runtime/state/releases"
+LEG_DIR="$REL_DIR/legacy"
+REP_DIR="runtime/state/reports"
+
+MODE="apply"   # apply | dry-run
+TS="$(date -u +%Y%m%dT%H%M%SZ)"
+REPORT="$REP_DIR/hygiene_102_report_${TS}.txt"
+LATEST="$REP_DIR/hygiene_102_report_latest.txt"
+
+usage(){
+  cat >&2 <<EOF
+usage: hygiene_releases [--dry-run] [--apply]
+
+Scans:   $REL_DIR
+Moves invalid/incomplete releases to:
+         $LEG_DIR/<reason>/release_<RID>/*
+
+Writes report:
+         $REPORT
+         $LATEST (symlink-like copy)
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) MODE="dry-run"; shift ;;
+    --apply) MODE="apply"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown arg: $1" ;;
+  esac
+done
+
+[[ -d "$REL_DIR" ]] || die "missing: $REL_DIR"
+[[ -x runtime/bin/validate_manifest ]] || die "missing executable: runtime/bin/validate_manifest"
+mkdir -p "$LEG_DIR" "$REP_DIR"
+
+# write header
+{
+  echo "PHASE 102 HYGIENE REPORT"
+  echo "timestamp_utc=$TS"
+  echo "mode=$MODE"
+  echo "root=$ROOT"
+  echo "scan_dir=$REL_DIR"
+  echo
+  echo "FORMAT:"
+  echo "RID | status | reason | moved_to"
+  echo
+} > "$REPORT"
+
+count_total=0
+count_ok=0
+count_moved=0
+count_skipped=0
+
+# only consider top-level release manifests (ignore legacy)
+shopt -s nullglob
+for m in "$REL_DIR"/release_*.json; do
+  # skip anything already under legacy
+  [[ "$m" == *"/legacy/"* ]] && continue
+
+  base="$(basename "$m")"                    # release_<RID>.json
+  rid="${base#release_}"; rid="${rid%.json}" # <RID>
+
+  bundle="$REL_DIR/release_${rid}.tar.gz"
+  msig="$REL_DIR/release_${rid}.json.sig.b64"
+  bsig="$REL_DIR/release_${rid}.tar.gz.sig.b64"
+  verr="$REL_DIR/release_${rid}.json.validate.err"
+
+  count_total=$((count_total+1))
+
+  status="OK"
+  reason=""
+  moved_to=""
+
+  # 1) manifest validation (authoritative)
+  if ! runtime/bin/validate_manifest "$m" > /dev/null 2> "$verr"; then
+    status="QUARANTINE"
+    reason="manifest_invalid:$(tr '\n' ' ' < "$verr" | sed -E 's/[[:space:]]+/ /g' | cut -c1-200)"
+  else
+    rm -f "$verr" || true
+  fi
+
+  # 2) bundle existence (must exist for a “release”)
+  if [[ "$status" == "OK" && ! -f "$bundle" ]]; then
+    status="QUARANTINE"
+    reason="bundle_missing"
+  fi
+
+  # 3) if signatures exist, keep them with the release; if manifest declares signing but sig files missing,
+  # validator already catches that. Here we only ensure we move existing sig files together.
+  # (No extra policy here.)
+
+  if [[ "$status" == "OK" ]]; then
+    echo "$rid | OK | - | -" >> "$REPORT"
+    count_ok=$((count_ok+1))
+    continue
+  fi
+
+  # Determine reason folder (stable + filesystem safe)
+  reason_folder="$(echo "$reason" | tr ' /:' '_' | tr -cd 'A-Za-z0-9._-')"
+  dest="$LEG_DIR/$reason_folder/release_${rid}"
+  moved_to="$dest"
+
+  echo "$rid | QUARANTINE | $reason | $dest" >> "$REPORT"
+
+  if [[ "$MODE" == "dry-run" ]]; then
+    count_skipped=$((count_skipped+1))
+    continue
+  fi
+
+  mkdir -p "$dest"
+
+  # Move everything that exists, together.
+  for f in "$m" "$bundle" "$msig" "$bsig" "$verr"; do
+    [[ -f "$f" ]] && mv -f "$f" "$dest/"
+  done
+
+  count_moved=$((count_moved+1))
+done
+
+{
+  echo
+  echo "SUMMARY"
+  echo "total_manifests=$count_total"
+  echo "ok_kept=$count_ok"
+  echo "quarantined_moved=$count_moved"
+  echo "quarantine_dryrun=$count_skipped"
+} >> "$REPORT"
+
+cp -f "$REPORT" "$LATEST"
+
+note "Wrote: $REPORT"
+note "Wrote: $LATEST"
+note "Done. total=$count_total ok=$count_ok moved=$count_moved dryrun=$count_skipped"

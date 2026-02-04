@@ -1,0 +1,29 @@
+{
+  "projections": [
+    {
+      "enabled": true,
+      "name": "executions_summary",
+      "output": "runtime/state/projections/executions_summary.json",
+      "source_log": "runtime/state/logs/executions.jsonl"
+    },
+    {
+      "enabled": true,
+      "name": "commands_summary",
+      "output": "runtime/state/projections/commands_summary.json",
+      "source_log": "runtime/state/logs/executions.jsonl"
+    },
+    {
+      "enabled": true,
+      "name": "system_status",
+      "output": "runtime/state/projections/system_status.json",
+      "source_log": ""
+    },
+    {
+      "enabled": true,
+      "name": "diagnose",
+      "output": "runtime/state/projections/diagnose.json",
+      "source_log": ""
+    }
+  ],
+  "schema_version": 1
+}

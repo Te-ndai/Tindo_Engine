@@ -1,0 +1,16 @@
+{
+  "findings": [
+    {
+      "action": "./runtime/bin/ops status",
+      "code": "ALL_GOOD",
+      "message": "system healthy",
+      "severity": "INFO"
+    }
+  ],
+  "generated_at_utc": "2026-02-04T10:29:26Z",
+  "last_event_time_utc": "",
+  "ok": 1,
+  "projection": "diagnose",
+  "source": "",
+  "total": 0
+}

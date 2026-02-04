@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+import argparse, hashlib, json, os, subprocess, sys
+
+SAFE_BASENAME = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+
+def die(msg: str) -> int:
+    print(f"ERROR: {msg}", file=sys.stderr)
+    return 1
+
+def safe_basename(name: str) -> bool:
+    return bool(name) and all(c in SAFE_BASENAME for c in name) and "/" not in name and "\\" not in name
+
+def sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024*1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def run(cmd):
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return r.returncode, r.stdout, r.stderr
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--manifest", required=True, help="release_<RID>.json")
+    ap.add_argument("--key", required=True, help="private key path (pem)")
+    ap.add_argument("--pub", required=True, help="public key path (pem)")
+    args = ap.parse_args()
+
+    mpath = args.manifest
+    if not os.path.isfile(mpath):
+        return die(f"manifest not found: {mpath}")
+
+    mdir = os.path.dirname(os.path.abspath(mpath))
+    mbase = os.path.basename(mpath)
+
+    # Expected sibling bundle from manifest.bundle_path (already present)
+    try:
+        with open(mpath, "r", encoding="utf-8") as f:
+            m = json.load(f)
+    except Exception as e:
+        return die(f"manifest not valid json: {e}")
+
+    # Resolve bundle path: if bundle_path is relative, treat as relative to manifest dir
+    bundle_path = m.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        return die("manifest missing bundle_path")
+    # Resolve bundle path deterministically:
+    # - absolute stays absolute
+    # - repo-relative (contains / or \\) resolved from current working dir (repo root)
+    # - basename-only treated as sibling of manifest
+    if os.path.isabs(bundle_path):
+        bundle_abs = bundle_path
+    elif ("/" in bundle_path) or ("\\" in bundle_path):
+        bundle_abs = os.path.normpath(os.path.join(os.getcwd(), bundle_path))
+    else:
+        bundle_abs = os.path.normpath(os.path.join(mdir, bundle_path))
+    if not os.path.isfile(bundle_abs):
+        return die(f"bundle not found: {bundle_abs}")
+
+    # Compute pub fingerprint (sha256 of pub bytes)
+    pub_fp = sha256_file(args.pub)
+
+    # Signature filenames (safe siblings)
+    manifest_sig = f"{mbase}.sig.b64"
+    bundle_sig = f"{os.path.basename(bundle_abs)}.sig.b64"
+
+    if not safe_basename(manifest_sig) or not safe_basename(bundle_sig):
+        return die("computed signature paths are not safe basenames")
+
+    manifest_sig_abs = os.path.join(mdir, manifest_sig)
+    bundle_sig_abs = os.path.join(mdir, bundle_sig)
+
+    # Attach signing metadata ONCE (policy: if any signing field exists, require all)
+    signing_fields = ("signing_alg","signing_pub_fingerprint_sha256","manifest_sig_b64_path","bundle_sig_b64_path")
+    present = [k for k in signing_fields if k in m and m[k] is not None and m[k] != ""]
+    if present and len(present) != len(signing_fields):
+        missing = [k for k in signing_fields if k not in m or m[k] in (None,"")]
+        return die(f"partial signing metadata in manifest; cannot proceed. missing={missing}")
+
+    # If not already attached, attach now
+    if len(present) == 0:
+        m["signing_alg"] = "rsa-sha256-b64"
+        m["signing_pub_fingerprint_sha256"] = pub_fp
+        m["manifest_sig_b64_path"] = manifest_sig
+        m["bundle_sig_b64_path"] = bundle_sig
+        with open(mpath, "w", encoding="utf-8") as f:
+            json.dump(m, f, indent=2, sort_keys=True)
+
+    # Sign manifest + bundle (detached)
+    rc, out, err = run(["./runtime/bin/sign_detached", "--key", args.key, "--in", mpath, "--out", manifest_sig_abs])
+    if rc != 0:
+        return die(f"sign_detached manifest failed:\n{err.strip()}")
+    rc, out, err = run(["./runtime/bin/sign_detached", "--key", args.key, "--in", bundle_abs, "--out", bundle_sig_abs])
+    if rc != 0:
+        return die(f"sign_detached bundle failed:\n{err.strip()}")
+
+    # Validate final manifest (now that declared signature files exist)
+    rc, out, err = run(["./runtime/bin/validate_manifest", mpath])
+    if rc != 0:
+        return die(f"manifest failed validation after signing:\n{err.strip()}")
+
+    # Verify (local)
+    rc, out, err = run(["./runtime/bin/verify_release_signatures", "--manifest", mpath, "--pub", args.pub])
+    if rc != 0:
+        return die(f"verify_release_signatures failed:\n{err.strip()}")
+
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

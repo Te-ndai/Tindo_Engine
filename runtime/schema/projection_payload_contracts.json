@@ -1,0 +1,63 @@
+{
+  "contracts": {
+    "commands_summary": {
+      "field_types": {
+        "by_command": "object",
+        "by_status": "object"
+      },
+      "required_fields": [
+        "by_command",
+        "by_status"
+      ]
+    },
+    "diagnose": {
+      "field_types": {
+        "findings": "list",
+        "generated_at_utc": "string",
+        "ok": "int"
+      },
+      "required_fields": [
+        "ok",
+        "generated_at_utc",
+        "findings"
+      ]
+    },
+    "executions_summary": {
+      "field_types": {
+        "by_command": "object",
+        "by_status": "object",
+        "last_n": "list"
+      },
+      "last_n_item_required": [
+        "event_type",
+        "event_time_utc",
+        "command",
+        "status",
+        "exit_code",
+        "request_sha256",
+        "response"
+      ],
+      "required_fields": [
+        "by_command",
+        "by_status",
+        "last_n"
+      ]
+    },
+    "system_status": {
+      "field_types": {
+        "checked_at_utc": "string",
+        "errors": "list",
+        "ok": "int",
+        "projections": "list"
+      },
+      "required_fields": [
+        "ok",
+        "checked_at_utc",
+        "projections",
+        "errors"
+      ],
+      "row_contract_version": 1
+    }
+  },
+  "schema_version": 1
+}

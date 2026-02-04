@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "release_manifest",
+  "type": "object",
+  "additionalProperties": true,
+
+  "properties": {
+    "release_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+
+    "bundle_path": { "type": "string", "minLength": 1 },
+    "bundle_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+
+    "compat": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "os": { "type": "string" },
+        "arch": { "type": "string" },
+        "python": { "type": "string" },
+        "impl": { "type": "string" },
+        "machine": { "type": "string" }
+      }
+    },
+
+    "expectations": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "expected_event_count": { "type": "integer", "minimum": 0 },
+        "expected_last_event_time_utc": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "signing_alg": {
+      "type": "string",
+      "enum": ["rsa-sha256-b64"]
+    },
+    "signing_pub_fingerprint_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "manifest_sig_b64_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bundle_sig_b64_path": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

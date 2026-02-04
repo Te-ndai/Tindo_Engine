@@ -1,0 +1,15 @@
+{
+  "by_command": {
+    "does_not_exist": 2,
+    "noop": 2,
+    "validate": 1
+  },
+  "by_status": {
+    "FAIL": 2,
+    "PASS": 3
+  },
+  "last_event_time_utc": "2026-02-02T08:22:02Z",
+  "projection": "commands_summary",
+  "source": "/mnt/c/Users/Tendai/Desktop/Blup/SF/V2/Root/runtime/state/logs/executions.jsonl",
+  "total": 5
+}

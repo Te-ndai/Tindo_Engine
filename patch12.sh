@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cat > runtime/bin/ops <<'OPS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "usage: ops {status|freshen|diagnose|report}"
+  exit 2
+}
+
+status_cmd() {
+  CHAIN_OK=1
+  if ! ./runtime/bin/logchain_append >/dev/null 2>&1; then
+    CHAIN_OK=0
+  fi
+
+  ./runtime/bin/rebuild_projections system_status >/dev/null || true
+
+  python3 - <<'PY'
+import json, sys
+d=json.load(open("runtime/state/projections/system_status.json","r",encoding="utf-8"))
+rows=d.get("projections",[])
+bad=False
+stale=False
+for r in rows:
+    if not isinstance(r,dict): continue
+    if r.get("status")=="FAIL": bad=True
+    if r.get("status")=="STALE": stale=True
+if bad: sys.exit(20)
+if stale: sys.exit(10)
+sys.exit(0)
+PY
+
+  rc=$?
+  if [ "$CHAIN_OK" -eq 0 ] && [ "$rc" -ne 20 ]; then
+    exit 20
+  fi
+  exit "$rc"
+}
+
+freshen_cmd() {
+  ./runtime/bin/make_fresh
+}
+
+diagnose_cmd() {
+  CHAIN_OK=1
+  if ! ./runtime/bin/logchain_append >/dev/null 2>&1; then
+    CHAIN_OK=0
+  fi
+
+  ./runtime/bin/rebuild_projections system_status >/dev/null || true
+  ./runtime/bin/rebuild_projections diagnose >/dev/null || true
+
+  python3 - <<'PY'
+import json, os, sys
+from datetime import datetime, timezone
+
+path="runtime/state/projections/diagnose.json"
+now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+if not os.path.exists(path):
+    print(f"DIAGNOSE {now} STATUS=FAIL")
+    print("FAIL=1 WARN=0 INFO=0")
+    print("[FAIL] DIAGNOSE_MISSING: diagnose.json missing")
+    print("  action: ./runtime/bin/rebuild_projections diagnose")
+    sys.exit(20)
+
+d=json.load(open(path,"r",encoding="utf-8"))
+findings=d.get("findings",[])
+
+order={"FAIL":0,"WARN":1,"INFO":2}
+findings=sorted(findings, key=lambda f:(order.get(f.get("severity","INFO"),2), f.get("code","")))
+
+counts={"FAIL":0,"WARN":0,"INFO":0}
+rank={"FAIL":2,"WARN":1,"INFO":0}
+worst=0
+
+for f in findings:
+    sev=f.get("severity","INFO")
+    counts[sev]+=1
+    worst=max(worst, rank.get(sev,0))
+
+status="OK" if worst==0 else ("WARN" if worst==1 else "FAIL")
+print(f"DIAGNOSE {now} STATUS={status}")
+print(f"FAIL={counts['FAIL']} WARN={counts['WARN']} INFO={counts['INFO']}")
+
+for f in findings:
+    print(f"[{f.get('severity')}] {f.get('code')}: {f.get('message')}")
+    print(f"  action: {f.get('action')}")
+
+if worst==2: sys.exit(20)
+if worst==1: sys.exit(10)
+sys.exit(0)
+PY
+
+  rc=$?
+  if [ "$CHAIN_OK" -eq 0 ] && [ "$rc" -ne 20 ]; then
+    exit 20
+  fi
+  exit "$rc"
+}
+
+report_cmd() {
+  mkdir -p runtime/state/reports
+  ./runtime/bin/ops diagnose > runtime/state/reports/diagnose.txt || true
+  cp -f runtime/state/projections/diagnose.json runtime/state/reports/diagnose.json 2>/dev/null || true
+  echo "OK: wrote runtime/state/reports/diagnose.txt + diagnose.json"
+  exit 0
+}
+
+case "${1:-}" in
+  status)   status_cmd ;;
+  freshen)  freshen_cmd ;;
+  diagnose) diagnose_cmd ;;
+  report)   report_cmd ;;
+  *) usage ;;
+esac
+OPS
+
+chmod +x runtime/bin/ops
+echo "OK: canonical ops written"

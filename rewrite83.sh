@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+
+die(){ echo "❌ $*" >&2; exit 1; }
+ok(){ echo "✅ $*"; }
+
+ROOT="$(pwd)"
+[ -d "$ROOT/test" ] || die "missing test dir"
+OUT="$ROOT/test/83_test_release_bundle.sh"
+[ -f "$ROOT/runtime/bin/release_bundle" ] || die "missing runtime/bin/release_bundle"
+
+# Backup
+if [ -f "$OUT" ]; then
+  B="${OUT}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -f "$OUT" "$B"
+  ok "backup: $B"
+fi
+
+cat > "$OUT" <<'SH'
+#!/usr/bin/env bash
+# test/83_test_release_bundle.sh
+# Phase 83 TEST: Release bundle contains required evidence + operational replay commands
+set -euo pipefail
+
+die(){ echo "FAIL: $*" >&2; exit 1; }
+
+./runtime/bin/release_bundle >/dev/null
+
+bundle="$(ls -1t runtime/state/releases/release_*.tar.gz | head -n 1)"
+manifest="$(ls -1t runtime/state/releases/release_*.json | head -n 1)"
+
+test -f "$bundle" || die "bundle missing"
+test -f "$manifest" || die "manifest missing"
+
+# Bundle must contain evidence outputs
+tar -tzf "$bundle" | grep -q '^runtime/state/reports/diagnose\.txt$' || die "missing diagnose.txt in bundle"
+tar -tzf "$bundle" | grep -q '^runtime/state/logs/executions\.chain\.checkpoint\.json$' || die "missing checkpoint in bundle"
+tar -tzf "$bundle" | grep -q '^runtime/state/logs/executions\.chain\.jsonl$' || die "missing executions.chain.jsonl in bundle"
+
+# Bundle must contain operational commands for replay proof
+tar -tzf "$bundle" | grep -q '^runtime/bin/logchain_verify$' || die "missing runtime/bin/logchain_verify in bundle"
+tar -tzf "$bundle" | grep -q '^runtime/bin/rebuild_projections$' || die "missing runtime/bin/rebuild_projections in bundle"
+tar -tzf "$bundle" | grep -q '^runtime/bin/ops$' || die "missing runtime/bin/ops in bundle"
+
+# Bundle must contain schemas + projections machinery
+tar -tzf "$bundle" | grep -q '^runtime/schema/' || die "missing runtime/schema in bundle"
+tar -tzf "$bundle" | grep -q '^runtime/core/projections\.py$' || die "missing runtime/core/projections.py in bundle"
+tar -tzf "$bundle" | grep -q '^runtime/state/projections/' || die "missing runtime/state/projections dir in bundle"
+
+# Manifest must include strict restore/replay expectations (Phase 85 contract)
+python3 - <<'PY' "$manifest"
+import json, sys
+d=json.load(open(sys.argv[1],"r",encoding="utf-8"))
+assert "expected_event_count" in d and isinstance(d["expected_event_count"], int), "missing/invalid expected_event_count"
+assert "expected_last_event_time_utc" in d and isinstance(d["expected_last_event_time_utc"], str), "missing/invalid expected_last_event_time_utc"
+assert d.get("bundle_sha256",""), "missing bundle_sha256"
+print("OK: manifest expectations present")
+PY
+
+echo "✅ Phase 83 TEST PASS"
+SH
+
+chmod +x "$OUT"
+ok "rewrote: test/83_test_release_bundle.sh"
+echo "Run:"
+echo "  ./test/83_test_release_bundle.sh"

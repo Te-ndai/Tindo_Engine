@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+import argparse, json, os, re, sys
+
+HEX64 = re.compile(r"^[a-f0-9]{64}$")
+REL_SAFE = re.compile(r"^[A-Za-z0-9._-]+$")  # basename-only, no slashes
+
+def fail(msg: str) -> int:
+    print(f"INVALID: {msg}", file=sys.stderr)
+    return 1
+
+def ok(msg: str="VALID") -> int:
+    print(msg)
+    return 0
+
+def is_safe_sibling_basename(p: str) -> bool:
+    return bool(REL_SAFE.match(p))
+
+def parse_args():
+    # Compat with BOTH:
+    #   validate_manifest <manifest.json> [--release-id RID]
+    #   validate_manifest --manifest <manifest.json> [--release-id RID]
+    # Also tolerates: validate_manifest <manifest.json> --release-id RID
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("manifest_pos", nargs="?", help="manifest.json (positional)")
+    ap.add_argument("--manifest", dest="manifest_opt", help="manifest.json (flag)")
+    ap.add_argument("--release-id", dest="release_id", default=None, help="optional (legacy); accepted for compatibility")
+    ns = ap.parse_args()
+
+    m = ns.manifest_opt or ns.manifest_pos
+    if not m:
+        # Keep behavior strict (non-zero) so misuse is caught,
+        # but now we should have removed the zero-arg invocations from tests/scripts.
+        ap.print_usage(sys.stderr)
+        raise SystemExit(2)
+    return m, ns.release_id
+
+def main() -> int:
+    mpath, _rid = parse_args()
+
+    if not os.path.isfile(mpath):
+        return fail(f"manifest not found: {mpath}")
+
+    try:
+        with open(mpath, "r", encoding="utf-8") as f:
+            m = json.load(f)
+    except Exception as e:
+        return fail(f"manifest not valid json: {e}")
+
+    # Baseline invariants (stable)
+    for k in ("release_id", "bundle_path", "bundle_sha256"):
+        if k not in m:
+            return fail(f"missing required field: {k}")
+
+    if not isinstance(m["release_id"], str) or not m["release_id"].strip():
+        return fail("release_id must be non-empty string")
+
+    if not isinstance(m["bundle_path"], str) or not m["bundle_path"].strip():
+        return fail("bundle_path must be non-empty string")
+
+    if not isinstance(m["bundle_sha256"], str) or not HEX64.match(m["bundle_sha256"]):
+        return fail("bundle_sha256 must be 64-char lowercase hex")
+
+    # Phase 98 signing invariants (policy-driven)
+    signing_fields = (
+        "signing_alg",
+        "signing_pub_fingerprint_sha256",
+        "manifest_sig_b64_path",
+        "bundle_sig_b64_path",
+    )
+    present = [k for k in signing_fields if k in m and m[k] not in (None, "")]
+
+    if present and len(present) != len(signing_fields):
+        missing = [k for k in signing_fields if k not in m or m[k] is None]
+        return fail(f"partial signing metadata: missing {','.join(missing)}")
+
+    if len(present) == len(signing_fields):
+        if m["signing_alg"] != "rsa-sha256-b64":
+            return fail("signing_alg must be rsa-sha256-b64")
+
+        fp = m["signing_pub_fingerprint_sha256"]
+        if not isinstance(fp, str) or not HEX64.match(fp):
+            return fail("signing_pub_fingerprint_sha256 must be 64-char lowercase hex")
+
+        man_sig = m["manifest_sig_b64_path"]
+        bun_sig = m["bundle_sig_b64_path"]
+
+        if not isinstance(man_sig, str) or not is_safe_sibling_basename(man_sig):
+            return fail("manifest_sig_b64_path must be a safe sibling basename")
+        if not isinstance(bun_sig, str) or not is_safe_sibling_basename(bun_sig):
+            return fail("bundle_sig_b64_path must be a safe sibling basename")
+
+        if not man_sig.endswith(".sig.b64"):
+            return fail("manifest_sig_b64_path must end with .sig.b64")
+        if not bun_sig.endswith(".sig.b64"):
+            return fail("bundle_sig_b64_path must end with .sig.b64")
+
+        # If signing metadata is declared, signature files must exist as siblings of manifest.
+        mdir = os.path.dirname(os.path.abspath(mpath))
+        if not os.path.isfile(os.path.join(mdir, man_sig)):
+            return fail(f"declared manifest signature missing: {man_sig}")
+        if not os.path.isfile(os.path.join(mdir, bun_sig)):
+            return fail(f"declared bundle signature missing: {bun_sig}")
+
+    return ok("VALID")
+
+if __name__ == "__main__":
+    raise SystemExit(main())

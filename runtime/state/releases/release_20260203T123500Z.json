@@ -1,0 +1,23 @@
+{
+  "bundle_path": "runtime/state/releases/release_20260203T123500Z.tar.gz",
+  "bundle_sha256": "0042cb2981874582b10374faf7d3a2db2592525a941ac68bfbacfce96b639d5f",
+  "checkpoint": "runtime/state/logs/executions.chain.checkpoint.json",
+  "compat": {
+    "arch": "x86_64",
+    "impl": "cpython",
+    "machine": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "os": "linux",
+    "python": "3.12.3"
+  },
+  "counts": {
+    "chain_lines": 16,
+    "executions": 16
+  },
+  "created_at_utc": "20260203T123500Z",
+  "expected_event_count": 16,
+  "expected_last_event_time_utc": "2026-02-02T13:16:04Z",
+  "last_event_time_utc": "2026-02-02T13:16:04Z",
+  "release_id": "20260203T123500Z",
+  "schema_version": 1,
+  "system_status_ok": true
+}

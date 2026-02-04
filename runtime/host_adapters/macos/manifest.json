@@ -1,0 +1,6 @@
+{
+  "host": "macos",
+  "entrypoint": "runtime/bin/app_entry",
+  "capabilities": { "filesystem": "read", "network": "none" },
+  "args_policy": { "allow_untyped_paths": false }
+}

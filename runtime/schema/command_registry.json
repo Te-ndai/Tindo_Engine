@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.1",
+  "contract": "command_registry",
+  "commands": {
+    "noop": {
+      "description": "No operation. Validation-only.",
+      "required_capabilities": {
+        "host": "none",
+        "context": "none",
+        "runtime": "read",
+        "command": "none",
+        "financial": "none"
+      },
+      "args_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "validate": {
+      "description": "Validate a request against schemas only.",
+      "required_capabilities": {
+        "host": "none",
+        "context": "none",
+        "runtime": "read",
+        "command": "read",
+        "financial": "none"
+      },
+      "args_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command": {"type": "string"},
+          "args": {"type": "object"}
+        },
+        "required": ["command", "args"]
+      }
+    }
+  }
+}

@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# Phase 96 POPULATE v4 (Option C):
+# - CI report has 3 tiers: PORTABLE_STRICT, PORTABLE_RELAXED (ignore machine), HOST_BOUND, plus INVALID
+# - Replay enforcement remains strict elsewhere (no change to Phase 84)
+set -euo pipefail
+
+die(){ echo "FAIL: $*" >&2; exit 1; }
+ok(){ echo "OK: $*"; }
+
+[ -d .github/workflows ] || die "missing .github/workflows (run build/95_build_ci_wiring.sh first)"
+[ -x test/90_test_all_deterministic.sh ] || die "missing executable: test/90_test_all_deterministic.sh"
+[ -x runtime/bin/validate_manifest ] || die "missing executable: runtime/bin/validate_manifest"
+
+cat > .github/workflows/ci.yml <<'YML'
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  deterministic-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure scripts executable
+        run: |
+          chmod +x test/*.sh runtime/bin/* build/*.sh populate/*.sh || true
+
+      - name: Run deterministic proof chain (Phase 90)
+        env:
+          FACTORY_VERSION: "ci"
+          RUNTIME_VERSION: "ci"
+        run: |
+          ./test/90_test_all_deterministic.sh
+
+      - name: Upload release artifacts (latest) for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-releases
+          path: runtime/state/releases
+          if-no-files-found: warn
+
+  manifest-portability-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure validator executable
+        run: |
+          chmod +x runtime/bin/validate_manifest || true
+
+      - name: Report portability of all manifests in runtime/state/releases (3-tier policy)
+        run: |
+          python3 - <<'PY' > portability_report.txt
+          import glob, json, platform, re, subprocess, sys
+
+          # Phase 96 (Option C) policy:
+          # - PORTABLE_STRICT: compat matches host on {os, arch, python, impl, machine}
+          # - PORTABLE_RELAXED: matches host on {os, arch, python, impl}, machine differs
+          # - HOST_BOUND: mismatch on any of {os, arch, python, impl}
+          STRICT_KEYS = ("os","arch","python","impl","machine")
+          RELAX_KEYS  = ("os","arch","python","impl")
+
+          def host():
+              return {
+                  "os": platform.system().lower(),
+                  "arch": platform.machine().lower(),
+                  "python": platform.python_version(),
+                  "impl": platform.python_implementation().lower(),
+                  "machine": platform.platform(),
+              }
+
+          host_full = host()
+          host_relax = {k: host_full[k] for k in RELAX_KEYS}
+
+          manifests = sorted(glob.glob("runtime/state/releases/release_*.json"))
+          if not manifests:
+              print("No manifests found in runtime/state/releases (nothing to report).")
+              sys.exit(0)
+
+          portable_strict = []
+          portable_relaxed = []
+          host_bound = []
+          invalid = []
+
+          def rid_from_path(p):
+              m = re.search(r"release_(\d{8}T\d{6}Z)\.json$", p)
+              return m.group(1) if m else ""
+
+          for mpath in manifests:
+              rid = rid_from_path(mpath)
+              cmd = ["./runtime/bin/validate_manifest", mpath]
+              if rid:
+                  cmd += ["--release-id", rid]
+
+              try:
+                  subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+              except subprocess.CalledProcessError as e:
+                  invalid.append((mpath, e.output.decode("utf-8", errors="replace").strip()))
+                  continue
+
+              doc = json.load(open(mpath, "r", encoding="utf-8"))
+              compat = doc.get("compat") or {}
+
+              compat_strict = {k: compat.get(k) for k in STRICT_KEYS}
+              compat_relax  = {k: compat.get(k) for k in RELAX_KEYS}
+
+              if compat_strict == host_full:
+                  portable_strict.append(mpath)
+              elif compat_relax == host_relax:
+                  portable_relaxed.append((mpath, compat.get("machine","")))
+              else:
+                  # show diffs on relax keys for debugging
+                  diffs = {k: (compat_relax.get(k), host_relax.get(k)) for k in RELAX_KEYS if compat_relax.get(k) != host_relax.get(k)}
+                  host_bound.append((mpath, diffs))
+
+          print("=== Manifest portability report (Phase 96 Option C: 3-tier policy) ===")
+          print("Host full:", host_full)
+          print("Host relaxed keys:", host_relax)
+          print()
+
+          def show(title, items):
+              print(f"{title} ({len(items)}):")
+              if not items:
+                  print("  - (none)")
+              else:
+                  for x in items:
+                      if isinstance(x, tuple):
+                          print("  -", x[0])
+                      else:
+                          print("  -", x)
+              print()
+
+          show("PORTABLE_STRICT (match os/arch/python/impl/machine)", portable_strict)
+          show("PORTABLE_RELAXED (match os/arch/python/impl; machine ignored)", portable_relaxed)
+          show("HOST_BOUND (mismatch in relaxed keys)", host_bound)
+          show("INVALID (schema/invariants failed)", invalid)
+
+          if portable_relaxed:
+              print("Details: PORTABLE_RELAXED machine values (first 10)")
+              for p, m in portable_relaxed[:10]:
+                  print(" -", p)
+                  print("   manifest.machine:", m)
+              print()
+
+          if host_bound:
+              print("Details: HOST_BOUND diffs (first 10)")
+              for p, diffs in host_bound[:10]:
+                  print(" -", p)
+                  print("   diffs:", diffs)
+              print()
+
+          if invalid:
+              print("Details: INVALID errors (first 5)")
+              for p, err in invalid[:5]:
+                  print(" -", p)
+                  print("   error:", "\\n".join(err.splitlines()[:6]))
+              print()
+
+          print("Summary:",
+                f"portable_strict={len(portable_strict)}",
+                f"portable_relaxed={len(portable_relaxed)}",
+                f"host_bound={len(host_bound)}",
+                f"invalid={len(invalid)}")
+          PY
+          cat portability_report.txt
+
+      - name: Upload portability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portability-report
+          path: portability_report.txt
+          if-no-files-found: warn
+YML
+
+ok "wrote .github/workflows/ci.yml (v4: 3-tier portability policy)"
+
+cat > .github/workflows/README.md <<'MD'
+# CI
+
+This repository's CI has two jobs:
+
+1) **deterministic-proof**
+   - Runs `test/90_test_all_deterministic.sh` to mint exactly one release and prove it end-to-end.
+
+2) **manifest-portability-report**
+   - Validates all release manifests in `runtime/state/releases/` using `runtime/bin/validate_manifest`.
+   - **Phase 96 (Option C) 3-tier portability policy:**
+     - **PORTABLE_STRICT**: compat matches host on `{os, arch, python, impl, machine}`
+     - **PORTABLE_RELAXED**: compat matches host on `{os, arch, python, impl}` (machine ignored)
+     - **HOST_BOUND**: mismatch on any of `{os, arch, python, impl}`
+     - **INVALID**: schema/invariants failed
+   - Uploads `portability_report.txt` as a workflow artifact.
+MD
+
+ok "wrote .github/workflows/README.md"
+echo "✅ Phase 96 POPULATE v4 PASS"

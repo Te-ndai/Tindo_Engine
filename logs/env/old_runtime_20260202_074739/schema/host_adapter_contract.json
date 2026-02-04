@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.1",
+  "contract": "host_adapter",
+  "rules": {
+    "canonical_entrypoint": "runtime/bin/app_entry",
+    "purity": "Adapters are pure translators. No business logic. No semantic changes.",
+    "typed_paths": "Adapters must not introduce untyped string paths into core execution.",
+    "no_os_detection_outside_adapters": true
+  },
+  "required_files": {
+    "linux":   ["manifest.json", "install.sh", "uninstall.sh", "invoke.sh"],
+    "windows": ["manifest.json", "install.ps1", "uninstall.ps1", "invoke.ps1"],
+    "macos":   ["manifest.json", "install.sh", "uninstall.sh", "invoke.sh"]
+  },
+  "manifest_schema": {
+    "type": "object",
+    "required": ["host", "entrypoint", "capabilities", "args_policy"],
+    "properties": {
+      "host": { "type": "string", "enum": ["linux", "windows", "macos"] },
+      "entrypoint": { "type": "string", "const": "runtime/bin/app_entry" },
+      "capabilities": {
+        "type": "object",
+        "required": ["filesystem", "network"],
+        "properties": {
+          "filesystem": { "type": "string", "enum": ["none", "read", "write"] },
+          "network": { "type": "string", "enum": ["none", "outbound"] }
+        }
+      },
+      "args_policy": {
+        "type": "object",
+        "required": ["allow_untyped_paths"],
+        "properties": {
+          "allow_untyped_paths": { "type": "boolean", "const": false }
+        }
+      }
+    }
+  }
+}

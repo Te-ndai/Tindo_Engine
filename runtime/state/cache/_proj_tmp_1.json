@@ -1,0 +1,81 @@
+{
+  "by_command": {
+    "does_not_exist": 2,
+    "noop": 2,
+    "validate": 1
+  },
+  "by_status": {
+    "FAIL": 2,
+    "PASS": 3
+  },
+  "last_event_time_utc": "2026-02-02T08:22:02Z",
+  "last_n": [
+    {
+      "command": "noop",
+      "event_time_utc": "2026-02-02T08:18:31Z",
+      "event_type": "execution",
+      "exit_code": 0,
+      "request_sha256": "89b7a8cf649fcad51a591fc55480a1a0a99dba2c6ec19ea77f2c609e6c357f9f",
+      "response": {
+        "command": "noop",
+        "ok": true,
+        "result": null
+      },
+      "status": "PASS"
+    },
+    {
+      "command": "validate",
+      "event_time_utc": "2026-02-02T08:18:31Z",
+      "event_type": "execution",
+      "exit_code": 0,
+      "request_sha256": "978ba83c098abbdc2a5671460ac8504615aa2eee13036fa8ac5510f18338b41b",
+      "response": {
+        "command": "validate",
+        "ok": true,
+        "target": "noop",
+        "valid": true
+      },
+      "status": "PASS"
+    },
+    {
+      "command": "does_not_exist",
+      "event_time_utc": "2026-02-02T08:18:32Z",
+      "event_type": "execution",
+      "exit_code": 3,
+      "request_sha256": "ce3c246a19f69028a0e229d9b6303593be30e89f4852ecd0c4d31cc2379b335f",
+      "response": {
+        "error": "Unknown command: does_not_exist",
+        "ok": false
+      },
+      "status": "FAIL"
+    },
+    {
+      "command": "noop",
+      "event_time_utc": "2026-02-02T08:22:02Z",
+      "event_type": "execution",
+      "exit_code": 0,
+      "request_sha256": "89b7a8cf649fcad51a591fc55480a1a0a99dba2c6ec19ea77f2c609e6c357f9f",
+      "response": {
+        "command": "noop",
+        "ok": true,
+        "result": null
+      },
+      "status": "PASS"
+    },
+    {
+      "command": "does_not_exist",
+      "event_time_utc": "2026-02-02T08:22:02Z",
+      "event_type": "execution",
+      "exit_code": 3,
+      "request_sha256": "ce3c246a19f69028a0e229d9b6303593be30e89f4852ecd0c4d31cc2379b335f",
+      "response": {
+        "error": "Unknown command: does_not_exist",
+        "ok": false
+      },
+      "status": "FAIL"
+    }
+  ],
+  "projection": "executions_summary",
+  "source": "/mnt/c/Users/Tendai/Desktop/Blup/SF/V2/Root/runtime/state/logs/executions.jsonl",
+  "total": 5
+}

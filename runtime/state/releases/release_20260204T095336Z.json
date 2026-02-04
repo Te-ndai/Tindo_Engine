@@ -1,0 +1,30 @@
+{
+  "bundle_path": "runtime/state/releases/release_20260204T095336Z.tar.gz",
+  "bundle_sha256": "cf23e665259bbb6fc661a4f19dfb17f65b81a2965c3dacfd3421e0ccf7de70fb",
+  "bundle_sig_b64_path": "release_20260204T095336Z.tar.gz.sig.b64",
+  "checkpoint": "unknown",
+  "compat": {
+    "arch": "x86_64",
+    "impl": "cpython",
+    "machine": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "os": "linux",
+    "python": "3.12.3"
+  },
+  "counts": {
+    "chain_lines": 16,
+    "executions": 16
+  },
+  "created_at_utc": "20260204T095336Z",
+  "expected_event_count": 16,
+  "expected_last_event_time_utc": "2026-02-02T13:16:04Z",
+  "factory_version": "dev",
+  "git_commit": "",
+  "last_event_time_utc": "2026-02-02T13:16:04Z",
+  "manifest_sig_b64_path": "release_20260204T095336Z.json.sig.b64",
+  "release_id": "20260204T095336Z",
+  "runtime_version": "dev",
+  "schema_version": 1,
+  "signing_alg": "rsa-sha256-b64",
+  "signing_pub_fingerprint_sha256": "0f41bc7be6f8b008dc8b5e9364398e8138380957e963dd03af817b99be3a240f",
+  "system_status_ok": true
+}

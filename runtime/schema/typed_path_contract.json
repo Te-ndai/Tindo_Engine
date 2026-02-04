@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1",
+  "contract": "typed_path",
+  "types": {
+    "HostPath": "host-specific OS path representation",
+    "LogicalPath": "host-agnostic identifier (namespace, key)",
+    "MemoryPath": "resolved content with provenance (hash, loaded_at)"
+  },
+  "allowed_transitions": [
+    { "name": "adapt",   "from": "HostPath",    "to": "LogicalPath" },
+    { "name": "resolve", "from": "LogicalPath", "to": "MemoryPath" }
+  ],
+  "forbidden_transitions": [
+    { "from": "HostPath", "to": "MemoryPath", "reason": "No direct host-to-memory resolution allowed" }
+  ],
+  "rules": {
+    "no_untyped_string_paths_in_runtime_execution": true
+  }
+}

@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage: release_bundle [--release-id RID]
+
+RID format: YYYYMMDDThhmmssZ (UTC), e.g. 20260203T120459Z
+If not provided, uses $RELEASE_ID. If unset, generates current UTC timestamp.
+EOF
+  exit 2
+}
+
+release_id="${RELEASE_ID:-}"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --release-id)
+      shift
+      [ $# -gt 0 ] || usage
+      release_id="$1"
+      shift
+      ;;
+    -h|--help) usage ;;
+    *) echo "ERROR: unknown arg: $1" >&2; usage ;;
+  esac
+done
+
+if [ -z "${release_id}" ]; then
+  release_id="$(date -u +%Y%m%dT%H%M%SZ)"
+fi
+
+outdir="runtime/state/releases"
+mkdir -p "$outdir"
+
+# Ensure current + coherent
+./runtime/bin/runbook >/dev/null
+./runtime/bin/logchain_verify >/dev/null
+
+# Hard requirement: reports must exist
+test -f runtime/state/reports/diagnose.txt || { echo "ERROR: missing runtime/state/reports/diagnose.txt"; exit 3; }
+test -f runtime/state/projections/system_status.json || { echo "ERROR: missing system_status.json"; exit 3; }
+test -f runtime/state/projections/diagnose.json || { echo "ERROR: missing diagnose.json"; exit 3; }
+
+bundle="$outdir/release_${release_id}.tar.gz"
+manifest="$outdir/release_${release_id}.json"
+
+python3 - <<'PY' "$release_id" "$bundle" "$manifest"
+import json, os, platform, sys, hashlib
+
+release_id, bundle, manifest = sys.argv[1], sys.argv[2], sys.argv[3]
+
+def count_nonempty_lines(p):
+    if not os.path.exists(p): return 0
+    n=0
+    with open(p,"r",encoding="utf-8",errors="replace") as f:
+        for line in f:
+            if line.strip(): n+=1
+    return n
+
+def last_event_time_from_chain(p):
+    if not os.path.exists(p): return ""
+    last=""
+    with open(p,"r",encoding="utf-8",errors="replace") as f:
+        for line in f:
+            line=line.strip()
+            if line: last=line
+    if not last: return ""
+    try:
+        obj=json.loads(last)
+        return obj.get("event_time_utc") or obj.get("event_time") or obj.get("timestamp_utc") or ""
+    except Exception:
+        return ""
+
+# Canonical event stream is executions.jsonl (NOT chain)
+exec_log="runtime/state/logs/executions.jsonl"
+chain_log="runtime/state/logs/executions.chain.jsonl"
+
+expected_event_count = count_nonempty_lines(exec_log)
+expected_last_event_time_utc = last_event_time_from_chain(chain_log)
+
+compat = {
+  "os": platform.system().lower(),
+  "arch": platform.machine().lower(),
+  "python": platform.python_version(),
+  "impl": platform.python_implementation().lower(),
+  "machine": platform.platform(),
+}
+
+m = {
+  "schema_version": 1,
+  "release_id": release_id,
+  "created_at_utc": release_id,  # keep simple: release_id is UTC timestamp string
+  "bundle_path": bundle,
+  "bundle_sha256": "",  # filled later by Phase 86 check (sibling manifest can be post-hash too)
+  "compat": compat,
+  "checkpoint": "runtime/state/logs/executions.chain.checkpoint.json",
+  "counts": {
+    "executions": expected_event_count,
+    "chain_lines": count_nonempty_lines(chain_log),
+  },
+  "expected_event_count": expected_event_count,
+  "expected_last_event_time_utc": expected_last_event_time_utc,
+  "last_event_time_utc": expected_last_event_time_utc,
+  "system_status_ok": True,
+}
+
+# Write sibling manifest (sha filled later by 86 test; this is fine and avoids self-reference traps)
+os.makedirs(os.path.dirname(manifest), exist_ok=True)
+with open(manifest,"w",encoding="utf-8") as f:
+    json.dump(m,f,indent=2,sort_keys=True)
+    f.write("\n")
+
+print("OK: wrote manifest", manifest)
+PY
+
+# Build tarball (includes the sibling manifest file by name under releases/)
+# Important: embedded manifest may not include bundle_sha256 (self reference); Phase 86 verifies tarball sha vs sibling manifest.
+tar -czf "$bundle" \
+  runtime/bin/logchain_verify \
+  runtime/bin/rebuild_projections \
+  runtime/bin/ops \
+  runtime/bin/runbook \
+  runtime/core/projections.py \
+  runtime/state/logs/executions.jsonl \
+  runtime/state/logs/executions.chain.jsonl \
+  runtime/state/logs/executions.chain.checkpoint.json \
+  runtime/state/projections/system_status.json \
+  runtime/state/projections/diagnose.json \
+  runtime/state/reports/diagnose.txt \
+  "runtime/state/releases/release_${release_id}.json"
+
+echo "OK: wrote bundle $bundle"

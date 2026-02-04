@@ -1,0 +1,10 @@
+{
+  "phase": "0.1",
+  "action": "BUILD",
+  "timestamp_utc": "2026-01-30T14:31:34Z",
+  "notes": "Structure + empty placeholders only. No contents populated.",
+  "dirs": [
+".","./build","./logs","./logs/phase00_backup_20260130_161851","./logs/phase00_backup_20260130_161851/specs","./populate","./promote","./runtime","./runtime/bin","./runtime/core","./runtime/host_adapters","./runtime/host_adapters/linux","./runtime/host_adapters/macos","./runtime/host_adapters/windows","./runtime/schema","./runtime/simulators","./runtime/simulators/slots","./runtime/state","./runtime/state/cache","./runtime/state/logs","./runtime/state/projections","./specs","./test"],
+  "files": [
+"./build/00_build.sh","./logs/phase00_backup_20260130_161851/specs/contsraints.md","./logs/phase00_backup_20260130_161851/specs/phases.md","./logs/phase00_backup_20260130_161851/specs/system.md","./phase00_fix_specs_filenames.sh","./phase00_sanitize_specs.sh","./runtime/bin/app_entry","./runtime/core/__init__.py","./runtime/core/capability.py","./runtime/core/executor.py","./runtime/core/path_model.py","./runtime/host_adapters/linux/install.sh","./runtime/host_adapters/linux/invoke.sh","./runtime/host_adapters/linux/manifest.json","./runtime/host_adapters/linux/uninstall.sh","./runtime/host_adapters/macos/install.sh","./runtime/host_adapters/macos/invoke.sh","./runtime/host_adapters/macos/manifest.json","./runtime/host_adapters/macos/uninstall.sh","./runtime/host_adapters/windows/install.ps1","./runtime/host_adapters/windows/invoke.ps1","./runtime/host_adapters/windows/manifest.json","./runtime/host_adapters/windows/uninstall.ps1","./runtime/schema/capability_lattice.json","./runtime/schema/command_registry.json","./runtime/schema/host_adapter_contract.json","./runtime/schema/typed_path_contract.json","./runtime/simulators/README.md","./runtime/simulators/registry.json","./specs/constraints.md","./specs/phases.md","./specs/system.md"]
+}

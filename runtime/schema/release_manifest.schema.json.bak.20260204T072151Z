@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime/schema/release_manifest.schema.json",
+  "title": "Release Manifest Schema",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+
+    "factory_version",
+    "runtime_version",
+    "git_commit",
+
+    "release_id",
+    "created_at_utc",
+    "bundle_path",
+    "bundle_sha256",
+    "compat",
+    "checkpoint",
+    "counts",
+    "expected_event_count",
+    "expected_last_event_time_utc",
+    "last_event_time_utc",
+    "system_status_ok"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+
+    "factory_version": { "type": "string", "minLength": 1 },
+    "runtime_version": { "type": "string", "minLength": 1 },
+    "git_commit": { "type": "string" , "pattern": "^[0-9a-f]{0,64}$" },
+
+    "release_id": { "type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z$" },
+    "created_at_utc": { "type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z$" },
+    "bundle_path": { "type": "string", "pattern": "^runtime/state/releases/release_[0-9]{8}T[0-9]{6}Z\\.tar\\.gz$" },
+    "bundle_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$|^$" },
+    "checkpoint": { "type": "string", "minLength": 1 },
+    "system_status_ok": { "type": "boolean" },
+
+    "compat": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["os", "arch", "python", "impl", "machine"],
+      "properties": {
+        "os": { "type": "string", "pattern": "^[a-z0-9._-]+$" },
+        "arch": { "type": "string", "pattern": "^[a-z0-9._-]+$" },
+        "python": { "type": "string", "minLength": 1 },
+        "impl": { "type": "string", "pattern": "^[a-z0-9._-]+$" },
+        "machine": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "counts": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["executions", "chain_lines"],
+      "properties": {
+        "executions": { "type": "integer", "minimum": 0 },
+        "chain_lines": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "expected_event_count": { "type": "integer", "minimum": 0 },
+    "expected_last_event_time_utc": { "type": "string", "minLength": 0 },
+    "last_event_time_utc": { "type": "string", "minLength": 0 }
+  }
+}

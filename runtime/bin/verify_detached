@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Verify a base64 detached signature for a file with RSA public key.
+set -euo pipefail
+die(){ echo "ERROR: $*" >&2; exit 1; }
+
+PUB=""
+IN=""
+SIG=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pub) shift; PUB="${1:-}"; shift ;;
+    --in)  shift; IN="${1:-}"; shift ;;
+    --sig) shift; SIG="${1:-}"; shift ;;
+    -h|--help)
+      echo "usage: verify_detached --pub pub.pem --in file --sig file.sig.b64" >&2
+      exit 2
+      ;;
+    *) die "unknown arg: $1" ;;
+  esac
+done
+
+[ -n "$PUB" ] || die "missing --pub"
+[ -n "$IN" ]  || die "missing --in"
+[ -n "$SIG" ] || die "missing --sig"
+[ -f "$PUB" ] || die "pub not found: $PUB"
+[ -f "$IN" ]  || die "input not found: $IN"
+[ -f "$SIG" ] || die "sig not found: $SIG"
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+base64 -d "$SIG" > "$tmp" || die "base64 decode failed"
+openssl dgst -sha256 -verify "$PUB" -signature "$tmp" "$IN" >/dev/null 2>&1 || die "signature verify failed"
+echo "OK: verified: $IN"

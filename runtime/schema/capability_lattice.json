@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1",
+  "contract": "capability_lattice",
+  "description": "Meet-semilattice for execution capability validation.",
+  "elements": ["BOTTOM", "none", "read", "write"],
+  "order": {
+    "BOTTOM": [],
+    "none": ["BOTTOM"],
+    "read": ["none", "BOTTOM"],
+    "write": ["read", "none", "BOTTOM"]
+  },
+  "meet_table": {
+    "BOTTOM": {"BOTTOM":"BOTTOM","none":"BOTTOM","read":"BOTTOM","write":"BOTTOM"},
+    "none":   {"BOTTOM":"BOTTOM","none":"none","read":"none","write":"none"},
+    "read":   {"BOTTOM":"BOTTOM","none":"none","read":"read","write":"read"},
+    "write":  {"BOTTOM":"BOTTOM","none":"none","read":"read","write":"write"}
+  },
+  "rule": {
+    "execution_valid_iff_meet_not_bottom": true
+  }
+}

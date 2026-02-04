@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "projections": [
+    {
+      "name": "executions_summary",
+      "source_log": "runtime/state/logs/executions.jsonl",
+      "output": "runtime/state/projections/executions_summary.json",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "contracts": {
+    "executions_summary": {
+      "required_fields": ["by_command", "by_status", "last_n"],
+      "field_types": {
+        "by_command": "object",
+        "by_status": "object",
+        "last_n": "list"
+      },
+      "last_n_item_required": ["event_type", "event_time_utc", "command", "status", "exit_code", "request_sha256", "response"]
+    },
+    "commands_summary": {
+      "required_fields": ["by_command", "by_status"],
+      "field_types": {
+        "by_command": "object",
+        "by_status": "object"
+      }
+    }
+  }
+}

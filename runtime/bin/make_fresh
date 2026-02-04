@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 1) Build status first
+./runtime/bin/rebuild_projections system_status >/dev/null
+
+STATUS_FILE="runtime/state/projections/system_status.json"
+test -f "$STATUS_FILE" || { echo "ERROR: system_status missing"; exit 1; }
+
+# 2) Gate on log_integrity
+python3 - <<'PY'
+import json, sys
+d=json.load(open("runtime/state/projections/system_status.json","r",encoding="utf-8"))
+rows={r.get("name"): r for r in d.get("projections",[]) if isinstance(r,dict)}
+li=rows.get("log_integrity")
+if not li or li.get("status") != "OK":
+    print("FAIL: log integrity not OK:", li)
+    sys.exit(20)
+PY
+
+# 3) Extract stale projection names (excluding system_status)
+STALE=$(
+python3 - <<'PY'
+import json
+d=json.load(open("runtime/state/projections/system_status.json","r",encoding="utf-8"))
+names=[]
+for row in d.get("projections", []):
+    if isinstance(row, dict) and row.get("status") == "STALE":
+        n=row.get("name")
+        if n and n not in ("system_status","log_integrity"):
+            names.append(n)
+print("\n".join(names))
+PY
+)
+
+# 4) Rebuild stale projections only
+if [ -n "${STALE}" ]; then
+  while IFS= read -r name; do
+    [ -z "$name" ] && continue
+    ./runtime/bin/rebuild_projections "$name" >/dev/null
+  done <<< "${STALE}"
+fi
+
+# 5) Rebuild status again
+./runtime/bin/rebuild_projections system_status >/dev/null
+
+# 6) Fail if any FAIL or STALE remains
+python3 - <<'PY'
+import json, sys
+d=json.load(open("runtime/state/projections/system_status.json","r",encoding="utf-8"))
+bad=[]
+for row in d.get("projections", []):
+    if not isinstance(row, dict): 
+        continue
+    st=row.get("status")
+    if st in ("FAIL","STALE"):
+        bad.append((row.get("name"), st))
+if bad:
+    print("FAIL: still unhealthy:", bad)
+    sys.exit(1)
+print("OK: system fresh")
+PY
+
+echo "OK: make_fresh complete"

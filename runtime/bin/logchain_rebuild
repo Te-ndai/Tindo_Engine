@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SRC="runtime/state/logs/executions.jsonl"
+OUT="runtime/state/logs/executions.chain.jsonl"
+
+python3 - <<'PY'
+import json, hashlib, os, sys
+
+src="runtime/state/logs/executions.jsonl"
+out="runtime/state/logs/executions.chain.jsonl"
+
+if not os.path.exists(src):
+    print("ERROR: source log missing:", src)
+    sys.exit(3)
+
+prev = "0"*64
+n = 0
+with open(src,"r",encoding="utf-8") as fin, open(out+".tmp","w",encoding="utf-8") as fout:
+    for line in fin:
+        line=line.strip()
+        if not line:
+            continue
+        ev=json.loads(line)
+
+        # canonical event JSON (exclude any chain fields if present)
+        ev2=dict(ev)
+        ev2.pop("prev_sha256", None)
+        ev2.pop("line_sha256", None)
+
+        payload=json.dumps(ev2, sort_keys=True, separators=(",",":")).encode("utf-8")
+        h=hashlib.sha256(prev.encode("utf-8")+payload).hexdigest()
+
+        ev2["prev_sha256"]=prev
+        ev2["line_sha256"]=h
+
+        fout.write(json.dumps(ev2, sort_keys=True) + "\n")
+        prev=h
+        n += 1
+
+os.replace(out+".tmp", out)
+print("OK: rebuilt chain log, lines=", n)
+PY
