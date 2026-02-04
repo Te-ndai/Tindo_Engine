@@ -1,3 +1,8 @@
 
 # Phase 99A: local private release signing key (DO NOT COMMIT)
 runtime/state/keys/release_priv.pem
+# Local patch artifacts / backups
+.github/workflows/*.bak.*
+runtime/bin/*.bak.*
+patch_*.sh
+patch*.sh
