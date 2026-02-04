@@ -60,9 +60,23 @@ jobs:
           chmod +x runtime/bin/verify_release_signatures || true
           chmod +x runtime/bin/validate_manifest || true
           chmod +x runtime/bin/sign_detached runtime/bin/verify_detached || true
+      - name: Preflight signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_SIGNING_KEY_PEM:-}" ]]; then
+            echo "ERROR: RELEASE_SIGNING_KEY_PEM is empty (secret missing or not injected)." >&2
+            exit 2
+          fi
+          if ! printf "%s" "$RELEASE_SIGNING_KEY_PEM" | grep -q "BEGIN"; then
+            echo "ERROR: RELEASE_SIGNING_KEY_PEM does not look like a PEM (missing BEGIN header)." >&2
+            echo "First 60 chars:" >&2
+            printf "%s" "$RELEASE_SIGNING_KEY_PEM" | head -c 60 >&2; echo >&2
+            exit 3
+          fi
       - name: Sign releases (no minting)
         env:
-          RELEASE_SIGNING_KEY_PEM: ${ secrets.RELEASE_SIGNING_KEY_PEM }
+          RELEASE_SIGNING_KEY_PEM: ${{ secrets.RELEASE_SIGNING_KEY_PEM }}
         run: |
           ./runtime/bin/ci_sign_releases runtime/state/releases
       - name: Signature report (post-sign)
