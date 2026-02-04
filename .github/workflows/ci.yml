@@ -163,9 +163,72 @@ jobs:
         run: |
           chmod +x runtime/bin/validate_manifest || true
 
-      - name: Generate portability report
+      - name: Generate portability report (Phase 96 – Option C)
         run: |
-          python3 scripts/ci_manifest_portability.py > portability_report.txt
+          python3 - <<'PY' > portability_report.txt
+          import glob, json, platform, re, subprocess, sys
+
+          STRICT_KEYS = ("os","arch","python","impl","machine")
+          RELAX_KEYS  = ("os","arch","python","impl")
+
+          def host():
+              return {
+                  "os": platform.system().lower(),
+                  "arch": platform.machine().lower(),
+                  "python": platform.python_version(),
+                  "impl": platform.python_implementation().lower(),
+                  "machine": platform.platform(),
+              }
+
+          host_full = host()
+          host_relax = {k: host_full[k] for k in RELAX_KEYS}
+
+          manifests = sorted(glob.glob("runtime/state/releases/release_*.json"))
+          if not manifests:
+              print("No manifests found.")
+              sys.exit(0)
+
+          portable_strict = []
+          portable_relaxed = []
+          host_bound = []
+          invalid = []
+
+          def rid(p):
+              m = re.search(r"release_(\d{8}T\d{6}Z)\.json$", p)
+              return m.group(1) if m else ""
+
+          for mpath in manifests:
+              r = rid(mpath)
+              cmd = ["./runtime/bin/validate_manifest", mpath]
+              if r:
+                  cmd += ["--release-id", r]
+              try:
+                  subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+              except subprocess.CalledProcessError as e:
+                  invalid.append((mpath, e.output.decode()))
+                  continue
+
+              doc = json.load(open(mpath))
+              compat = doc.get("compat") or {}
+
+              strict = {k: compat.get(k) for k in STRICT_KEYS}
+              relax  = {k: compat.get(k) for k in RELAX_KEYS}
+
+              if strict == host_full:
+                  portable_strict.append(mpath)
+              elif relax == host_relax:
+                  portable_relaxed.append(mpath)
+              else:
+                  host_bound.append(mpath)
+
+          print("PORTABLE_STRICT:", len(portable_strict))
+          print("PORTABLE_RELAXED:", len(portable_relaxed))
+          print("HOST_BOUND:", len(host_bound))
+          print("INVALID:", len(invalid))
+
+          if invalid:
+              sys.exit(2)
+          PY
           cat portability_report.txt
 
       - name: Upload portability report
@@ -174,7 +237,7 @@ jobs:
         with:
           name: portability-report
           path: portability_report.txt
-          if-no-files-found: warn
+
 
 
   # ------------------------------------------------------------------
