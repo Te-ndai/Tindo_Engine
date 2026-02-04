@@ -53,12 +53,18 @@ jobs:
         with:
           name: runtime-releases
           path: runtime/state/releases
-      - name: Ensure tools executable
+      - name: Ensure signing tools executable
         run: |
-          chmod +x runtime/bin/ci_sign_releases || true
-          chmod +x runtime/bin/attach_release_signatures || true
-          chmod +x runtime/bin/verify_release_signatures || true
-          chmod +x runtime/bin/validate_manifest || true
+          chmod +x runtime/bin/sign_detached runtime/bin/verify_detached || true
+          chmod +x runtime/bin/attach_release_signatures runtime/bin/verify_release_signatures || true
+          chmod +x runtime/bin/validate_manifest runtime/bin/ci_sign_releases || true
+        - name: Ensure tools executable
+          run: |
+            chmod +x runtime/bin/ci_sign_releases || true
+            chmod +x runtime/bin/attach_release_signatures || true
+            chmod +x runtime/bin/verify_release_signatures || true
+            chmod +x runtime/bin/validate_manifest || true
+            chmod +x runtime/bin/sign_detached runtime/bin/verify_detached || true
       - name: Sign releases (no minting)
         env:
           RELEASE_SIGNING_KEY_PEM: ${ secrets.RELEASE_SIGNING_KEY_PEM }
